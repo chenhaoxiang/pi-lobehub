@@ -41,6 +41,9 @@ tmp/
 *.cache
 .cache/
 
+# Private local fixture credentials and profiles (never application source)
+/keys-local/
+
 # Environment files
 .env
 .env.local

@@ -48,7 +48,9 @@ const findFreePort = async (startPort: number): Promise<number> => {
   for (let port = startPort; port < startPort + MAX_PORT_SCAN_ATTEMPTS; port++) {
     if (await isPortFree(port)) return port;
   }
-  throw new Error(`No free port found in range ${startPort}-${startPort + MAX_PORT_SCAN_ATTEMPTS - 1}`);
+  throw new Error(
+    `No free port found in range ${startPort}-${startPort + MAX_PORT_SCAN_ATTEMPTS - 1}`,
+  );
 };
 
 /**
@@ -56,6 +58,14 @@ const findFreePort = async (startPort: number): Promise<number> => {
  * Priority: -p CLI flag > PORT env var > first free port from 3010.
  * An explicitly requested port is used verbatim so conflicts fail loudly.
  */
+const createNextDevArgs = (port: number, host = process.env.DEV_HOST): string[] => [
+  'next',
+  'dev',
+  '-p',
+  String(port),
+  ...(host ? ['--hostname', host] : []),
+];
+
 const resolveNextPort = async (): Promise<number> => {
   const pIndex = process.argv.indexOf('-p');
   if (pIndex !== -1 && process.argv[pIndex + 1]) {
@@ -316,7 +326,7 @@ const main = async () => {
     forceKillChildren();
   });
 
-  nextProcess = spawn('bunx', ['next', 'dev', '-p', String(nextPort)], {
+  nextProcess = spawn('bunx', createNextDevArgs(nextPort), {
     detached: !isWindows,
     env: process.env,
     stdio: 'inherit',
@@ -342,6 +352,7 @@ const isMainModule = () => {
 };
 
 export const __testing = {
+  createNextDevArgs,
   createPackageScriptProcessConfig,
   createDevProcessHandle,
   findFreePort,

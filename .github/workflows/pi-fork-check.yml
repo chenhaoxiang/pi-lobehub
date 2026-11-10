@@ -34,6 +34,7 @@ jobs:
           NODE_PATH: ${{ github.workspace }}/tmp/fork-ci-tools/node_modules
         run: |
           node --test .github/scripts/forkWorkflowPolicy.test.mjs
+          node --test scripts/piLocalFixture.test.mjs
           node .github/scripts/forkWorkflowPolicy.mjs
       - name: Check Pi RPC framing, version, identity and question regressions
         run: node tmp/fork-ci-tools/node_modules/vitest/vitest.mjs run --config .github/scripts/piRpcChecks.config.mjs
