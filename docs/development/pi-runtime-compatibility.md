@@ -64,10 +64,10 @@ the question extension's extra Other/Chat/Submit menu entries. The host's bounde
 UI wait is at most ten minutes (or the native request's shorter deadline).
 
 The original maintained `rpiv-ask-user-question` owner provides the matching RPC
-implementation in its **unreleased fork.7 source candidate** ([owner PR #17](https://github.com/chenhaoxiang/rpiv-ask-user-question/pull/17), merged as `573d875`). It preserves single
+implementation in maintained **fork.7** ([owner PR #17](https://github.com/chenhaoxiang/rpiv-ask-user-question/pull/17), merged as `573d875`). During this compatibility verification it was an unreleased source candidate; a separate user-authorized local-tool update subsequently published [v0.1.4-fork.7](https://github.com/chenhaoxiang/rpiv-ask-user-question/releases/tag/v0.1.4-fork.7) from that same exact merge. This compatibility slice itself did not publish or install it. It preserves single
 choice, editable text, Chat, duplicate-label multi-selection/order and cancellation
-without calling `ui.custom` in RPC. The existing released fork.6 and live TUI
-sessions are not modified by this change. Verify/select the new source in an
+without calling `ui.custom` in RPC. The old fork.6 source and live TUI
+sessions are preserved; a settings selection does not prove hot reload of an active session. Verify/select the reviewed source or immutable release in an
 isolated test profile before installation; do not load two competing copies of
 `ask_user_question`. The original TUI custom-component observation channels remain
 TUI-only; an RPC request is not proof that a remote page displayed it.

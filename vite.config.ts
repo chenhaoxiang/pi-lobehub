@@ -362,7 +362,7 @@ export default defineConfig({
 
   server: {
     cors: true,
-    host: true,
+    host: process.env.DEV_HOST || true,
     port: isMobile
       ? Number(process.env.MOBILE_SPA_PORT) || 3012
       : isAuth
