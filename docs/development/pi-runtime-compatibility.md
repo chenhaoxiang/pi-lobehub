@@ -6,7 +6,7 @@ status: active
 truth_mode: maintained
 created: 2026-11-10
 verified: 2026-11-11
-verification_scope: CLI-device Pi RPC source, provider-free regressions and isolated native Pi/question-package fixture; not business-model or Web end-to-end acceptance
+verification_scope: CLI-device Pi RPC source, provider-free regressions, isolated native Pi/question-package fixture and localhost authenticated Web single/multi callbacks; not business-model, release or production acceptance
 ---
 
 # Pi CLI-device RPC compatibility
@@ -140,5 +140,4 @@ invokes the actual registered question tool from a native extension command, and
 rejects provider requests. On Pi 1.5.0-fork.4 it verified single choice, custom
 Chinese text, Chat, duplicate-label multi-selection and cancel through the actual
 Lobe handle with native session ids and zero provider requests. A separate run held the first real native question for 31,000ms (observed total 37,003ms), exceeding the ordinary 30s ACK budget without failure, then completed all five cases. This is native
-protocol evidence, **not** a real business-model turn, logged-in Web rendering
-acceptance, release, installation, or production readiness claim.
+protocol evidence, **not** a real business-model turn, release, installation, or production readiness claim.\n\nThe separate P1 localhost fixture also verified a real authenticated Web → backend → independent CLI device → maintained Pi → original question-tool callback: single choice returned the selected original Chinese label; multi-selection chosen in reverse order returned original indices `[0, 2]` and their original-order labels. Both native fixture results recorded `providerRequests: 0`. The Web run waited several minutes before an explicit submission, offered no additional off-list text box for native select, and displayed the no-automatic-answer countdown. Earlier pre-fix ACK failure and a cancelled stale-frontend run were retained, not rewritten as passed. The fixture invokes the actual tool from a native input hook, not a business-model-issued tool turn; the rest of P3 business/parent-reply acceptance remains separate. Native option rows were verified visually and via the real form event/producer result; no new VoiceOver/keyboard acceptance is claimed.
