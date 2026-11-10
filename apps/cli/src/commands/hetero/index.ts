@@ -1,55 +1,46 @@
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import os from 'node:os';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
   HETEROGENEOUS_AGENT_CONFIGS,
   isLocalHeterogeneousType,
   LOCAL_HETEROGENEOUS_AGENT_TYPES,
-  type LocalHeterogeneousAgentType,
   usesHeterogeneousSessionInitialModel,
 } from '@lobechat/heterogeneous-agents';
-import { AskUserBridge } from '@lobechat/heterogeneous-agents/askUser';
-import { LobeBuiltinMcpServer } from '@lobechat/heterogeneous-agents/builtinMcp';
 import { HETERO_EXEC_INHERIT_PROCESS_GROUP_ENV } from '@lobechat/heterogeneous-agents/protocol';
 import { resolveHeteroSpawnCommand } from '@lobechat/heterogeneous-agents/resolveCliCommand';
-import {
-  createPiRpcAgentHandle,
-  type PiRpcStartupControl,
-  preparePiRpcInput,
-} from '@lobechat/heterogeneous-agents/rpc';
+import type { PiRpcStartupControl } from '@lobechat/heterogeneous-agents/rpc';
 import type {
   AgentContentBlock,
   AgentImageSource,
   AgentPromptInput,
-  AgentStreamEvent,
+  spawnAgent,
   UploadHeterogeneousImage,
 } from '@lobechat/heterogeneous-agents/spawn';
 import {
   classifyHeteroProcessFailure,
-  createCodexAgentHandle,
   createFileStoreImageUploader,
   isHeteroStatusGuideErrorData,
-  spawnAgent,
   spawnDshAcpSession,
 } from '@lobechat/heterogeneous-agents/spawn';
-import { toCodexServiceTier } from '@lobechat/types';
 import { isRecord } from '@lobechat/utils/object';
 import type { Command } from 'commander';
 
-import { getTrpcClient } from '../api/client';
-import { cliVersion } from '../pkg';
-import { CoalescingBatchIngester } from '../utils/CoalescingBatchIngester';
-import { withHeteroSteer } from '../utils/heteroSteer';
-import { HeteroTraceRecorder } from '../utils/HeteroTraceRecorder';
-import { log } from '../utils/logger';
-import { createOperationHeartbeat } from '../utils/OperationHeartbeat';
-import { createOperationTokenRenewal } from '../utils/OperationTokenRenewal';
-import { createLocalTraceStore } from '../utils/traceStore';
-import { TrpcIngestSink } from '../utils/TrpcIngestSink';
+import { getTrpcClient } from '../../api/client';
+import { CoalescingBatchIngester } from '../../utils/CoalescingBatchIngester';
+import { withHeteroSteer } from '../../utils/heteroSteer';
+import { HeteroTraceRecorder } from '../../utils/HeteroTraceRecorder';
+import { log } from '../../utils/logger';
+import { createOperationHeartbeat } from '../../utils/OperationHeartbeat';
+import { createOperationTokenRenewal } from '../../utils/OperationTokenRenewal';
+import { createLocalTraceStore } from '../../utils/traceStore';
+import { TrpcIngestSink } from '../../utils/TrpcIngestSink';
+import { createHeteroInterventions } from './interventions';
+import { RawStreamDump } from './RawStreamDump';
+import { spawnAgentOrRuntime } from './runtime';
+import { buildExtraArgs } from './selectorArgs';
 
 const DSH_AGENT_TYPE = 'deepseek-harness';
 export const SUPPORTED_AGENT_TYPES = new Set<string>([
@@ -90,72 +81,6 @@ const SUPPORTED_AGENT_TITLES = [
 const SUPPORTED_AGENT_COMMANDS = HETEROGENEOUS_AGENT_CONFIGS.map(
   ({ defaultCommand }) => `\`${defaultCommand}\``,
 ).join(', ');
-const CODEX_REASONING_EFFORT_CONFIG_KEY = 'model_reasoning_effort';
-const CODEX_SERVICE_TIER_CONFIG_KEY = 'service_tier';
-/**
- * Runtime factories for `lh hetero exec`. Pi uses RPC; other agents fall
- * through to the generic one-shot `spawnAgent`.
- */
-const spawnRuntimeRegistry: Partial<
-  Record<
-    LocalHeterogeneousAgentType,
-    (
-      spawnOpts: Parameters<typeof spawnAgent>[0],
-      lifecycle?: {
-        onRawStdout?: (chunk: Buffer) => void;
-        onStartupControl?: (control: PiRpcStartupControl) => void;
-      },
-    ) => Promise<Awaited<ReturnType<typeof spawnAgent>>>
-  >
-> = {
-  pi: async (spawnOpts, lifecycle) =>
-    createPiRpcAgentHandle({
-      ...(await preparePiRpcInput(spawnOpts.prompt, {
-        args: spawnOpts.extraArgs ?? [],
-        lobeHubContext: !!spawnOpts.env?.LOBEHUB_TOPIC_ID,
-      })),
-      commandPath: spawnOpts.command!,
-      cwd: spawnOpts.cwd ?? process.cwd(),
-      detached: spawnOpts.detached,
-      env: { ...process.env, ...spawnOpts.env },
-      operationId: spawnOpts.operationId,
-      onRawStdout: lifecycle?.onRawStdout,
-      onStartupControl: lifecycle?.onStartupControl,
-      resumeSessionId: spawnOpts.resumeSessionId,
-      uploadImage: spawnOpts.uploadImage,
-    }),
-};
-
-/**
- * Spawn via the registered runtime factory, or the generic one-shot spawn.
- * `onRawStdout` (raw-dump tee) reaches both generic and registered runtimes;
- * RPC runtimes must install it before their eager handshake.
- */
-const spawnAgentOrRuntime = (
-  spawnOpts: Parameters<typeof spawnAgent>[0],
-  onRawStdout?: (chunk: Buffer) => void,
-  onStartupControl?: (control: PiRpcStartupControl) => void,
-  nativeCodex?: boolean,
-): Promise<Awaited<ReturnType<typeof spawnAgent>>> => {
-  if (nativeCodex)
-    return createCodexAgentHandle({
-      askUserBridge: spawnOpts.askUserBridge,
-      clientVersion: cliVersion,
-      args: spawnOpts.extraArgs ?? [],
-      commandPath: spawnOpts.command!,
-      cwd: spawnOpts.cwd ?? process.cwd(),
-      env: { ...process.env, ...spawnOpts.env },
-      onRawStdout,
-      onStartupControl,
-      operationId: spawnOpts.operationId,
-      prompt: spawnOpts.prompt,
-      resumeSessionId: spawnOpts.resumeSessionId,
-    });
-  const runtimeFactory = spawnRuntimeRegistry[spawnOpts.agentType as LocalHeterogeneousAgentType];
-  if (runtimeFactory) return runtimeFactory(spawnOpts, { onRawStdout, onStartupControl });
-  return spawnAgent({ ...spawnOpts, onRawStdout });
-};
-
 /**
  * Patterns that indicate a `--resume <sessionId>` run should be retried
  * without `--resume`.  Two classes of failure:
@@ -246,45 +171,6 @@ interface ExecOptions {
 
 const collectImage = (value: string, previous: string[] = []): string[] => [...previous, value];
 const collectAgentArg = (value: string, previous: string[] = []): string[] => [...previous, value];
-
-const buildExtraArgs = (
-  options: Pick<ExecOptions, 'agentArg' | 'effort' | 'mode' | 'model' | 'speed' | 'type'>,
-): string[] | undefined => {
-  const modelArg = options.model ? ['--model', options.model] : [];
-  const selectorArgs =
-    options.type === 'amp'
-      ? options.mode
-        ? ['--mode', options.mode]
-        : []
-      : options.type === 'droid' || options.type === 'trae'
-        ? []
-        : options.type === 'codex'
-          ? [
-              ...modelArg,
-              ...(options.effort
-                ? ['-c', `${CODEX_REASONING_EFFORT_CONFIG_KEY}="${options.effort}"`]
-                : []),
-              ...(options.speed
-                ? ['-c', `${CODEX_SERVICE_TIER_CONFIG_KEY}="${toCodexServiceTier(options.speed)}"`]
-                : []),
-            ]
-          : options.type === 'claude-code' ||
-              options.type === 'codebuddy' ||
-              options.type === 'grok-build'
-            ? [...modelArg, ...(options.effort ? ['--effort', options.effort] : [])]
-            : options.type === 'cursor' ||
-                options.type === 'devin' ||
-                options.type === 'kimi-code' ||
-                options.type === 'opencode' ||
-                options.type === 'pi'
-              ? modelArg
-              : options.type === 'copilot' || options.type === 'qoder'
-                ? [...modelArg, ...(options.effort ? ['--reasoning-effort', options.effort] : [])]
-                : [];
-  const extraArgs = [...(options.agentArg ?? []), ...selectorArgs];
-
-  return extraArgs.length > 0 ? extraArgs : undefined;
-};
 
 const readStdin = async (): Promise<string> => {
   const chunks: Buffer[] = [];
@@ -420,77 +306,6 @@ const resolvePrompt = async (options: ExecOptions): Promise<ResolvedPrompt> => {
   }
   return buildPromptFromText(raw, images);
 };
-
-interface RawStreamDumpAttempt {
-  /** Flush + close both file streams. Resolves once the bytes are on disk. */
-  close: () => Promise<void>;
-  writeStderr: (chunk: Buffer) => void;
-  writeStdout: (chunk: Buffer) => void;
-}
-
-/**
- * Persists the agent process's RAW stdout/stderr — the untouched stream-json,
- * BEFORE the adapter — to disk for post-hoc debugging. The adapted/ingested
- * view can't tell a CC-side empty `tool_result` apart from an adapter
- * extraction bug; the raw dump can.
- *
- * Enabled via `lh hetero exec --raw-dump <dir>`. Each exec gets its own
- * `<dir>/<timestamp>-<operationId>/` session folder; each spawn attempt (the
- * resume retry is a second attempt) writes `<label>.stdout.jsonl` /
- * `<label>.stderr.log`. Fully best-effort: any dump failure is logged and
- * swallowed so it never affects the run or its exit code.
- *
- * Future: the server-side sandbox runner (`spawnHeteroSandbox`) and the
- * desktop device path (`spawnLhHeteroExec`) can pass `--raw-dump` pointing at
- * a collectable location to capture remote runs the same way.
- */
-class RawStreamDump {
-  private constructor(private readonly dir: string) {}
-
-  static async create(
-    root: string,
-    operationId: string,
-    meta: Record<string, unknown>,
-  ): Promise<RawStreamDump | undefined> {
-    try {
-      const safeTs = new Date().toISOString().replaceAll(/[.:]/g, '-');
-      const dir = path.join(path.resolve(root), `${safeTs}-${operationId}`);
-      await mkdir(dir, { recursive: true });
-      await writeFile(
-        path.join(dir, 'meta.json'),
-        `${JSON.stringify({ ...meta, operationId, startedAt: new Date().toISOString() }, null, 2)}\n`,
-      );
-      log.info(`Raw stream dump enabled → ${dir}`);
-      return new RawStreamDump(dir);
-    } catch (err) {
-      log.warn(
-        `Failed to initialize raw stream dump: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return undefined;
-    }
-  }
-
-  openAttempt(label: string): RawStreamDumpAttempt {
-    const stdout = createWriteStream(path.join(this.dir, `${label}.stdout.jsonl`));
-    const stderr = createWriteStream(path.join(this.dir, `${label}.stderr.log`));
-    // A failed dump write must never crash the run — drop write errors.
-    stdout.on('error', () => {});
-    stderr.on('error', () => {});
-    return {
-      close: () =>
-        Promise.all([
-          new Promise<void>((resolve) => stdout.end(() => resolve())),
-          new Promise<void>((resolve) => stderr.end(() => resolve())),
-        ]).then(() => undefined),
-      writeStderr: (chunk: Buffer) => {
-        stderr.write(chunk);
-      },
-      writeStdout: (chunk: Buffer) => {
-        stdout.write(chunk);
-      },
-    };
-  }
-}
 
 const exec = async (options: ExecOptions): Promise<void> => {
   if (!SUPPORTED_AGENT_TYPES.has(options.type)) {
@@ -749,113 +564,17 @@ const exec = async (options: ExecOptions): Promise<void> => {
   // through durable ingest to the question card; long-poll returns browser
   // answers from the server's Redis stream to the blocked native callback.
   // The bridge timeout bounds the wait, including native Codex requests.
-  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-  let askServer: LobeBuiltinMcpServer | undefined;
-  let askBridge: AskUserBridge | undefined;
-  let askMcpConfigPath: string | undefined;
-  const askPollAbort = new AbortController();
-  if (
-    serverIngest &&
-    (agentType === 'claude-code' ||
-      (agentType === 'codex' && options.codexAppServer) ||
-      agentType === 'copilot' ||
-      agentType === 'cursor' ||
-      agentType === 'droid' ||
-      agentType === 'devin' ||
-      agentType === 'qoder') &&
-    serverIngester
-  ) {
-    if (
-      agentType === 'codex' ||
-      agentType === 'copilot' ||
-      agentType === 'cursor' ||
-      agentType === 'devin' ||
-      agentType === 'droid'
-    ) {
-      askBridge = new AskUserBridge(operationId, {
-        identifier: agentType === 'cursor' ? 'claude-code' : agentType,
-        provider: agentType,
-      });
-    } else {
-      askServer = new LobeBuiltinMcpServer();
-      await askServer.start();
-      askBridge = askServer.registerOperation(
-        operationId,
-        new AskUserBridge(operationId, { identifier: agentType, provider: agentType }),
-      );
-      askMcpConfigPath = path.join(os.tmpdir(), `lobe-cc-mcp-${operationId}.json`);
-      await writeFile(
-        askMcpConfigPath,
-        JSON.stringify({
-          mcpServers: {
-            lobe_cc: {
-              alwaysLoad: true,
-              type: 'http',
-              url: askServer.urlForOperation(operationId),
-            },
-          },
-        }),
-        'utf8',
-      );
-    }
-
-    // (i) Forward every bridge event into the same ordered durable ingest path
-    // as CC's. Browser submit already XADDed a response for producer delivery,
-    // but that is only transport acceptance. The bridge echo after resolve is
-    // the producer ACK (producerAck=true + resolutionRequestId) that transitions
-    // Cloud from `resolving` to terminal. Persistence de-dupes transitions by
-    // (operationId, toolCallId, transition).
-    void (async () => {
-      for await (const event of askBridge!.events()) {
-        serverIngester!.push(event as AgentStreamEvent);
-      }
-    })();
-
-    // (ii) Long-poll the server for the user's answer — only while a question is
-    // actually pending, so an idle run holds no server invocation.
-    void (async () => {
-      const client = await getTrpcClient();
-      // Start at the beginning of this operation stream. A response can be
-      // published after `pendingCount` flips but before the first XREAD; `$`
-      // would skip that already-present response and strand the CLI until the
-      // bridge timeout. Unknown/stale tool ids are harmless (`resolve` no-ops).
-      let lastEventId = '0-0';
-      while (!askPollAbort.signal.aborted) {
-        if (askBridge!.pendingCount === 0) {
-          await sleep(200);
-          continue;
-        }
-        try {
-          const res = await client.aiAgent.waitInterventionResponse.query({
-            lastEventId,
-            operationId,
-          });
-          lastEventId = res.lastEventId;
-          for (const event of res.events) {
-            const data = event.data as {
-              cancelReason?: 'session_ended' | 'timeout' | 'user_cancelled';
-              cancelled?: boolean;
-              result?: unknown;
-              resolutionRequestId?: string;
-              toolCallId: string;
-            };
-            // Idempotent: resolve() no-ops on an unknown / already-settled id.
-            askBridge!.resolve(data.toolCallId, {
-              cancelReason: data.cancelReason,
-              cancelled: data.cancelled,
-              result: data.result,
-              resolutionRequestId: data.resolutionRequestId,
-            });
-          }
-        } catch {
-          // Transient (server hiccup / token refresh) — back off and retry.
-          // The bridge's 10-min timeout still bounds the overall wait.
-          await sleep(1000);
-        }
-      }
-    })();
-  }
-
+  const {
+    askBridge,
+    askMcpConfigPath,
+    stop: stopInterventions,
+  } = await createHeteroInterventions({
+    agentType,
+    codexAppServer: options.codexAppServer,
+    operationId,
+    serverIngest,
+    serverIngester,
+  });
   /**
    * Build the `finish` error payload. Process-level failures the agent CLI
    * never got to report in-stream (spawn ENOENT because the CLI isn't
@@ -1391,12 +1110,7 @@ const exec = async (options: ExecOptions): Promise<void> => {
   // Tear down the AskUserQuestion MCP: stop polling, cancel any in-flight
   // pending (→ CC's tool returns cleanly), close the server, drop the temp
   // config. Best-effort — the process is about to exit anyway.
-  askPollAbort.abort();
-  if (askServer) {
-    askServer.unregisterOperation(operationId);
-    await askServer.stop().catch(() => {});
-  } else askBridge?.cancelAll('session_ended');
-  if (askMcpConfigPath) await unlink(askMcpConfigPath).catch(() => {});
+  await stopInterventions();
 
   if (code !== null) {
     const hasRunError =

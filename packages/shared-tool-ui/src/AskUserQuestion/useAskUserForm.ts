@@ -47,6 +47,9 @@ export interface UseAskUserFormParams {
 }
 
 export interface AskUserFormApi {
+  answerMode?: AskUserQuestionArgs['answerMode'];
+  allowCustomAnswer: boolean;
+  allowSupplement: boolean;
   activeQuestion?: AskUserQuestionItem;
   activeTab: string;
   /**
@@ -110,10 +113,15 @@ export const useAskUserForm = ({
   writeDraft,
 }: UseAskUserFormParams): AskUserFormApi => {
   const questions = useMemo(() => normalizeAskUserQuestions(args), [args]);
+  const answerMode = args?.answerMode;
+  const allowCustomAnswer = answerMode !== 'exact-choice';
+  const allowSupplement = answerMode === undefined;
 
   // Plain const (not a hook) so it can read `persistedDraft` without tripping
   // exhaustive-deps; consumed only by the once-run useState initializers below.
   const initial = readDraft(persistedDraft);
+  if (answerMode === 'text' && questions[0]) initial.custom = { [questions[0].question]: args?.textPrefill ?? '', ...initial.custom };
+  if (answerMode === 'exact-choice') initial.custom = {};
 
   const [picks, setPicks] = useState<Record<string, string | string[]>>(() => initial.picks);
   const [custom, setCustom] = useState<Record<string, string>>(() => initial.custom);
@@ -129,7 +137,7 @@ export const useAskUserForm = ({
   const [autoSubmitted, setAutoSubmitted] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(() => {
     // Resume on the first unanswered question rather than always at Q1.
-    const idx = questions.findIndex((q) => !isQuestionAnswered(q, initial.picks, initial.custom));
+    const idx = questions.findIndex((q) => !isQuestionAnswered(q, initial.picks, initial.custom, answerMode));
     return String(idx >= 0 ? idx : 0);
   });
 
@@ -208,7 +216,8 @@ export const useAskUserForm = ({
 
   const handleToggle = useCallback(
     (q: AskUserQuestionItem, label: string, options?: { submitOnComplete?: boolean }) => {
-      if (disabled) return;
+      if (disabled || answerMode === 'text') return;
+      if (answerMode === 'exact-choice' && !q.options.some(option => (option.id ?? option.label) === label)) return;
       let nextPicks: Record<string, string | string[]>;
       if (q.multiSelect) {
         const current = (picks[q.question] as string[] | undefined) ?? [];
@@ -249,11 +258,11 @@ export const useAskUserForm = ({
         // question must have been unanswered so revisiting an already answered
         // question only updates the pick and never fires a surprise submit
         // while the user is reviewing.
-        const wasUnanswered = !isQuestionAnswered(q, picks, custom);
-        const allAnswered = questions.every((qq) => isQuestionAnswered(qq, nextPicks, nextCustom));
+        const wasUnanswered = !isQuestionAnswered(q, picks, custom, answerMode);
+        const allAnswered = questions.every((qq) => isQuestionAnswered(qq, nextPicks, nextCustom, answerMode));
         if (options?.submitOnComplete && wasUnanswered && allAnswered) {
-          const payload = buildSubmitPayload(questions, nextPicks, nextCustom);
-          if (supplementText.trim()) {
+          const payload = buildSubmitPayload(questions, nextPicks, nextCustom, answerMode);
+          if (allowSupplement && supplementText.trim()) {
             payload[SUPPLEMENT_PAYLOAD_KEY] = supplementText.trim();
           }
           void submitWith(payload);
@@ -264,7 +273,7 @@ export const useAskUserForm = ({
         // sweeps through without re-clicking the tabs.
         if (questions.length > 1) {
           const next = questions.findIndex(
-            (qq) => qq.question !== q.question && !isQuestionAnswered(qq, nextPicks, nextCustom),
+            (qq) => qq.question !== q.question && !isQuestionAnswered(qq, nextPicks, nextCustom, answerMode),
           );
           if (next >= 0) setActiveTab(String(next));
         }
@@ -274,6 +283,8 @@ export const useAskUserForm = ({
       picks,
       custom,
       disabled,
+      answerMode,
+      allowSupplement,
       escapeActive,
       escapeText,
       questions,
@@ -286,6 +297,7 @@ export const useAskUserForm = ({
 
   const handleCustomChange = useCallback(
     (q: AskUserQuestionItem, value: string) => {
+      if (disabled || !allowCustomAnswer) return;
       const nextCustom = { ...custom, [q.question]: value };
 
       // Single-select: writing your own answer clears the picked option so the
@@ -308,11 +320,12 @@ export const useAskUserForm = ({
         supplementText,
       });
     },
-    [picks, custom, escapeActive, escapeText, supplementActive, supplementText, writeDraft],
+    [picks, custom, disabled, allowCustomAnswer, escapeActive, escapeText, supplementActive, supplementText, writeDraft],
   );
 
   const handleEscapeTextChange = useCallback(
     (value: string) => {
+      if (!allowSupplement) return;
       setEscapeText(value);
       // Persist freeform text alongside the (hidden) picks so a refresh resumes
       // here; the picks survive a toggle back to the form.
@@ -325,11 +338,12 @@ export const useAskUserForm = ({
         supplementText,
       });
     },
-    [custom, picks, supplementText, writeDraft],
+    [custom, picks, supplementText, allowSupplement, writeDraft],
   );
 
   const handleSupplementTextChange = useCallback(
     (value: string) => {
+      if (!allowSupplement) return;
       setSupplementText(value);
       writeDraft({
         custom,
@@ -340,7 +354,7 @@ export const useAskUserForm = ({
         supplementText: value,
       });
     },
-    [custom, escapeText, picks, writeDraft],
+    [custom, escapeText, picks, allowSupplement, writeDraft],
   );
 
   const setEscapeMode = useCallback(
@@ -392,14 +406,14 @@ export const useAskUserForm = ({
         supplementText,
       });
     },
-    [custom, escapeText, picks, supplementText, writeDraft],
+    [custom, escapeText, picks, supplementText, allowSupplement, writeDraft],
   );
 
   // Whole-form freeform only makes sense with more than one question — with a
   // single question the per-question custom box already IS the full custom
   // answer, so escape is redundant there and never offered.
-  const escapeAvailable = questions.length > 1;
-  const supplementAvailable = questions.length > 0;
+  const escapeAvailable = allowSupplement && questions.length > 1;
+  const supplementAvailable = allowSupplement && questions.length > 0;
   const inEscape = escapeActive && escapeAvailable;
   const inSupplement = supplementActive && supplementAvailable;
 
@@ -409,12 +423,12 @@ export const useAskUserForm = ({
       // under `__freeform__`. Bridge formatter forwards it verbatim.
       void submitWith({ [FREEFORM_PAYLOAD_KEY]: escapeText.trim() });
     } else {
-      const payload = buildSubmitPayload(questions, picks, custom);
+      const payload = buildSubmitPayload(questions, picks, custom, answerMode);
       // Additional notes are a saved form value, not a tab-local value. Once
       // entered, keep them on an explicit submit even after the user returns
       // to a question to review or change an answer. Replace-all remains the
       // only mutually exclusive submission mode.
-      if (supplementText.trim()) payload[SUPPLEMENT_PAYLOAD_KEY] = supplementText.trim();
+      if (allowSupplement && supplementText.trim()) payload[SUPPLEMENT_PAYLOAD_KEY] = supplementText.trim();
       void submitWith(payload);
     }
   }, [
@@ -423,6 +437,8 @@ export const useAskUserForm = ({
     escapeAvailable,
     escapeText,
     inSupplement,
+    answerMode,
+    allowSupplement,
     picks,
     questions,
     submitWith,
@@ -448,9 +464,9 @@ export const useAskUserForm = ({
   const allAnswered = useMemo(
     () =>
       requireAllAnswered
-        ? questions.every((q) => isQuestionAnswered(q, picks, custom))
-        : questions.some((q) => isQuestionAnswered(q, picks, custom)),
-    [picks, custom, questions, requireAllAnswered],
+        ? questions.every((q) => isQuestionAnswered(q, picks, custom, answerMode))
+        : questions.some((q) => isQuestionAnswered(q, picks, custom, answerMode)),
+    [picks, custom, questions, requireAllAnswered, answerMode],
   );
 
   // Timeout fallback for legacy question forms: shortly BEFORE the deadline,
@@ -467,7 +483,7 @@ export const useAskUserForm = ({
     // A stable id means this is a provider-owned choice (permission/plan or a
     // newer exact-id question). Never infer consent by selecting option one:
     // let the producer timeout/cancel fail closed.
-    if (hasProviderOwnedOptionIds) return;
+    if (hasProviderOwnedOptionIds || answerMode !== undefined || args?.autoSubmitOnTimeout === false) return;
     setAutoSubmitted(true);
     if (escapeActive && escapeAvailable && escapeText.trim().length > 0) {
       void submitWith({ [FREEFORM_PAYLOAD_KEY]: escapeText.trim() });
@@ -475,7 +491,7 @@ export const useAskUserForm = ({
     }
     // Start from whatever the user picked / typed, then backfill option 1 for
     // any question still untouched.
-    const fallback = buildSubmitPayload(questions, picks, custom);
+    const fallback = buildSubmitPayload(questions, picks, custom, answerMode);
     for (const q of questions) {
       if (fallback[q.question] == null && q.options.length > 0) {
         const first = q.options[0].label;
@@ -502,6 +518,9 @@ export const useAskUserForm = ({
     supplementText,
     submitWith,
     hasProviderOwnedOptionIds,
+    answerMode,
+    allowSupplement,
+    args?.autoSubmitOnTimeout,
   ]);
 
   const activeQuestion = questions[Number(activeTab)] ?? questions[0];
@@ -515,6 +534,9 @@ export const useAskUserForm = ({
         : !allAnswered || expired || submitting);
 
   return {
+    answerMode,
+    allowCustomAnswer,
+    allowSupplement,
     activeQuestion,
     activeTab,
     autoSubmitted,

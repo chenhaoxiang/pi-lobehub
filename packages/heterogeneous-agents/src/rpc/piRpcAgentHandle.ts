@@ -2,15 +2,18 @@ import { PassThrough } from 'node:stream';
 
 import type { AgentStreamEvent } from '@lobechat/agent-gateway-client';
 
+import type { AskUserBridge } from '../askUser/AskUserBridge';
 import type { AgentPromptInput } from '../protocol';
 import type { UploadHeterogeneousImage } from '../spawn/agentStreamPipeline';
 import { normalizeImage } from '../spawn/input/normalizeImage';
 import type { PiRpcImage } from './piRpcProtocol';
+import { createPiRpcQuestionHandler } from './piRpcQuestionBridge';
 import { PiRpcSession } from './piRpcSession';
 
 /** Options mirroring the `spawnAgent` shape the CLI passes for one agent run. */
 export interface PiRpcAgentHandleOptions {
   args: string[];
+  askUserBridge?: AskUserBridge;
   commandPath: string;
   cwd: string;
   detached?: boolean;
@@ -142,6 +145,9 @@ export const createPiRpcAgentHandle = async (
     sessionId: options.operationId,
     uploadImage: options.uploadImage,
     onEvents: (events: AgentStreamEvent[]) => queue.push(events),
+    onExtensionUiRequest: options.askUserBridge
+      ? createPiRpcQuestionHandler(options.askUserBridge)
+      : undefined,
     onRawStdout: options.onRawStdout,
     onRuntimeStatus: () => {
       /* no-op — the CLI surfaces state via events */
@@ -157,6 +163,7 @@ export const createPiRpcAgentHandle = async (
 
   const cancel = async (signal: NodeJS.Signals) => {
     cancelledSignal = signal;
+    options.askUserBridge?.cancelAll('session_ended');
     if (signal === 'SIGKILL') {
       await session.close({ force: true });
     } else if (signal === 'SIGTERM' || !runStarted) {
@@ -175,6 +182,7 @@ export const createPiRpcAgentHandle = async (
   const exit = session
     .run(options.prompt)
     .then(() => {
+      options.askUserBridge?.cancelAll('session_ended');
       queue.close();
       stderr.end();
       return cancelledSignal
@@ -182,6 +190,7 @@ export const createPiRpcAgentHandle = async (
         : { code: 0, signal: null as NodeJS.Signals | null };
     })
     .catch((error) => {
+      options.askUserBridge?.cancelAll('session_ended');
       queue.close();
       stderr.end(`${error instanceof Error ? error.message : String(error)}\n`);
       return cancelledSignal

@@ -28,6 +28,52 @@ const request = (overrides: Partial<AgentInterventionRequestData> = {}) => ({
 });
 
 describe('sanitizeAgentInterventionRequestForReview', () => {
+  it('retains Pi ownership when reusing the legacy question renderer', () => {
+    expect(
+      sanitizeAgentInterventionRequestForReview(
+        request({
+          identifier: 'claude-code',
+          interactionKind: 'question',
+          provider: 'pi',
+        }),
+      ),
+    ).toMatchObject({ provider: 'pi', identifier: 'claude-code' });
+  });
+  it('preserves bounded raw-text and exact-choice policies without admitting unknown modes', () => {
+    for (const answerMode of ['text', 'exact-choice'] as const) {
+      const value = request({ provider: 'pi', interactionKind: 'question' });
+      value.arguments = JSON.stringify({
+        questions: JSON.parse(value.arguments).questions,
+        answerMode,
+        ...(answerMode === 'text' ? { textPrefill: '  keep whitespace\n' } : {}),
+      });
+      const sanitized = sanitizeAgentInterventionRequestForReview(value)!;
+      expect(JSON.parse(sanitized.arguments).answerMode).toBe(answerMode);
+      if (answerMode === 'text')
+        expect(JSON.parse(sanitized.arguments).textPrefill).toBe('  keep whitespace\n');
+    }
+    const invalid = request({
+      provider: 'pi',
+      interactionKind: 'question',
+      arguments: JSON.stringify({
+        questions: [{ header: 'Pi', question: 'Q', options: [] }],
+        answerMode: 'unknown',
+      }),
+    });
+    expect(sanitizeAgentInterventionRequestForReview(invalid)).toBeUndefined();
+  });
+
+  it('preserves explicit-answer timeout policy through durable sanitization', () => {
+    const value = request({ provider: 'pi', interactionKind: 'question' });
+    value.arguments = JSON.stringify({
+      ...JSON.parse(value.arguments),
+      autoSubmitOnTimeout: false,
+    });
+    expect(
+      JSON.parse(sanitizeAgentInterventionRequestForReview(value)!.arguments).autoSubmitOnTimeout,
+    ).toBe(false);
+  });
+
   it('preserves a native Codex free-text question for durable Review', () => {
     const sanitized = sanitizeAgentInterventionRequestForReview(
       request({

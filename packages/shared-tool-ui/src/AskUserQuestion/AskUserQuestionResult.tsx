@@ -5,6 +5,7 @@ import { cssVar } from '@lobehub/ui/stylex/cssVar.stylex';
 import * as stylex from '@stylexjs/stylex';
 import { memo } from 'react';
 
+import { resolveQuestionAnswerLabels } from './result';
 import type { AskUserQuestionItem } from './types';
 
 const styles = stylex.create({
@@ -90,7 +91,7 @@ interface QuestionAnswerProps {
 
 const QuestionAnswer = memo<QuestionAnswerProps>(
   ({ question, answer, index, notAnswered, recommendedTag }) => {
-    const labels: string[] = Array.isArray(answer) ? answer : answer ? [answer] : [];
+    const labels = resolveQuestionAnswerLabels(question, answer);
     const isRecommended = (label: string) =>
       question.options.some((o) => o.label === label && o.recommended);
 

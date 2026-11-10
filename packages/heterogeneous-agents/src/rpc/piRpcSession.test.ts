@@ -95,6 +95,67 @@ afterEach(() => {
 });
 
 describe('PiRpcSession', () => {
+  it.each(['question', 'tool'] as const)(
+    'does not confuse an active %s with an idle process',
+    async (kind) => {
+      vi.useFakeTimers();
+      let answer!: () => void;
+      mocks.command.mockResolvedValue({ success: true });
+      const { session, statuses } = createSession({
+        inactivityTimeoutMs: 100,
+        onExtensionUiRequest: () =>
+          new Promise<undefined>((resolve) => (answer = () => resolve(undefined))),
+      });
+      const run = session.run({ text: 'work' });
+      const failed = vi.fn();
+      void run.catch(failed);
+      await vi.advanceTimersByTimeAsync(0);
+      let waiting: Promise<unknown> | undefined;
+      if (kind === 'question') {
+        waiting = mocks.clientInstances
+          .at(-1)
+          .options.onExtensionUiRequest(
+            { id: 'q1', method: 'input', type: 'extension_ui_request' },
+            new AbortController().signal,
+          );
+      } else await emit(session, { type: 'tool_execution_start', toolCallId: 'long-tool' });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(statuses).not.toContain('stale');
+      expect(failed).not.toHaveBeenCalled();
+      if (kind === 'question') {
+        answer();
+        await waiting;
+      } else await emit(session, { type: 'tool_execution_end', toolCallId: 'long-tool' });
+      await vi.advanceTimersByTimeAsync(100);
+      expect(statuses).toContain('stale');
+      expect(failed).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Pi RPC produced no events for 100ms' }),
+      );
+      await run.catch(() => {});
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+  it('resumes an existing native session instead of silently creating an empty replacement', async () => {
+    const { session } = createSession({ resumeSessionId: 'native-existing' });
+    await session.start();
+    expect(mocks.clientInstances.at(-1).options.args).toEqual(['--session', 'native-existing']);
+    await session.close();
+  });
+
+  it.each(['steer', 'followUp'] as const)(
+    'sends %s once and propagates a missing ACK without replay',
+    async (method) => {
+      const { session } = createSession();
+      mocks.command.mockRejectedValue(new Error('request timed out; outcome unknown'));
+      await expect(session[method]('changed instruction')).rejects.toThrow('outcome unknown');
+      expect(mocks.command).toHaveBeenCalledExactlyOnceWith({
+        type: method === 'steer' ? 'steer' : 'follow_up',
+        message: 'changed instruction',
+      });
+      await session.close();
+    },
+  );
+
   it('waits for identity installation before prompting and cleanup before reuse', async () => {
     let installed!: () => void;
     let cleared!: () => void;

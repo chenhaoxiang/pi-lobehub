@@ -8,11 +8,11 @@ import {
   PI_RPC_HANDSHAKE_TIMEOUT_MS,
   PI_RPC_MIN_CLI_VERSION,
   type PiExtensionUiRequest,
-  type PiExtensionUiResponse,
   type PiRpcCommand,
   type PiRpcEvent,
   type PiRpcResponse,
 } from './piRpcProtocol';
+import { type PiRpcUiHandler, PiRpcUiRequests } from './piRpcUiRequests';
 import { RpcStdioClient, RpcStdioConnectionError } from './rpcStdioClient';
 
 /** Error thrown when a pi RPC command fails (`success: false` response). */
@@ -63,9 +63,7 @@ export interface PiRpcClientOptions {
    * hangs on an unrenderable prompt. Fire-and-forget methods are surfaced
    * here too but never answered.
    */
-  onExtensionUiRequest?: (
-    request: PiExtensionUiRequest,
-  ) => Promise<PiExtensionUiResponse | undefined> | PiExtensionUiResponse | undefined;
+  onExtensionUiRequest?: PiRpcUiHandler;
   onRawStdout?: (chunk: Buffer) => void;
   onStderr: (data: string) => void | Promise<void>;
   /** Enable the private per-turn env bridge for a pooled process. */
@@ -75,7 +73,6 @@ export interface PiRpcClientOptions {
 }
 
 const DEFAULT_CLOSE_GRACE_MS = 3_000;
-const DIALOG_METHODS = new Set(['select', 'confirm', 'input', 'editor']);
 
 /**
  * Protocol layer for `pi --mode rpc`, built on the generic
@@ -90,6 +87,7 @@ const DIALOG_METHODS = new Set(['select', 'confirm', 'input', 'editor']);
  */
 export class PiRpcClient {
   private readonly transport: RpcStdioClient;
+  private readonly uiRequests: PiRpcUiRequests;
   private readonly options: PiRpcClientOptions;
   private handshakeResolved = false;
   private handshakeSessionId?: string;
@@ -101,6 +99,12 @@ export class PiRpcClient {
 
   constructor(options: PiRpcClientOptions) {
     this.options = options;
+    this.uiRequests = new PiRpcUiRequests({
+      onRequest: options.onExtensionUiRequest,
+      onWaitingChanged: (waiting) =>
+        this.transport.setRequestTimeoutsPaused(['prompt', 'steer', 'follow_up'], waiting),
+      send: (response) => this.transport.notify({ ...response }),
+    });
     if (options.operationContext) this.operationContext = new PiRpcOperationContext();
     this.transport = new RpcStdioClient({
       args: [
@@ -116,6 +120,7 @@ export class PiRpcClient {
       env: options.env,
       isResponse: (message) => message?.type === 'response',
       onError: (error) => {
+        this.uiRequests.cancelAll();
         this.operationContext?.cancel(error);
         options.onError?.(this.toConnectionError(error));
       },
@@ -132,6 +137,10 @@ export class PiRpcClient {
 
   get isClosed(): boolean {
     return this.transport.isClosed;
+  }
+
+  get isWaitingForUi(): boolean {
+    return this.uiRequests.isWaiting;
   }
 
   /** True once the startup handshake succeeded (`get_state` answered). */
@@ -244,9 +253,9 @@ export class PiRpcClient {
         { phase: 'spawn' },
       );
     }
-    // Require a stable CLI release. get_state alone is not capability
-    // negotiation: older releases answer it but never emit agent_settled.
-    const match = /^v?(\d+)\.(\d+)\.(\d+)(?:\+[\dA-Za-z.-]+)?$/.exec(version);
+    // Accept stable releases and explicit maintained revisions, not arbitrary
+    // prereleases. The base version still needs agent_settled and the handshake.
+    const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-fork\.[1-9]\d*)?(?:\+[\dA-Za-z.-]+)?$/.exec(version);
     const minimum = PI_RPC_MIN_CLI_VERSION.split('.').map(Number);
     const difference =
       match
@@ -256,7 +265,7 @@ export class PiRpcClient {
         .find((part) => part !== 0) ?? 0;
     if (!match || difference < 0) {
       throw new PiRpcConnectionError(
-        `Pi >= ${PI_RPC_MIN_CLI_VERSION} (stable) is required; upgrade pi to use RPC.`,
+        `Pi >= ${PI_RPC_MIN_CLI_VERSION} (stable or maintained fork) is required; upgrade pi to use RPC.`,
         { phase: 'spawn' },
       );
     }
@@ -291,6 +300,7 @@ export class PiRpcClient {
 
   /** Bound the abort ACK independently of ordinary command timeout settings. */
   async abort(): Promise<void> {
+    this.uiRequests.cancelAll();
     await this.command({ type: 'abort' }, PI_RPC_ABORT_TIMEOUT_MS);
   }
 
@@ -299,6 +309,7 @@ export class PiRpcClient {
    * Resolves when the child is gone (or was never spawned).
    */
   close(options?: { force?: boolean }): Promise<void> {
+    this.uiRequests.cancelAll();
     this.probeAbort.abort();
     this.operationContext?.cancel(new PiRpcConnectionError('Pi RPC client closed by host'));
     const transportClose = this.transport.close(options);
@@ -368,10 +379,13 @@ export class PiRpcClient {
           { phase: 'handshake', stderr: this.transport.stderrText },
         );
       }
-      this.handshakeResolved = true;
-      if (typeof response.data?.sessionId === 'string') {
-        this.handshakeSessionId = response.data.sessionId;
+      if (typeof response.data?.sessionId !== 'string' || !response.data.sessionId.trim()) {
+        throw new PiRpcConnectionError('Pi RPC handshake is missing native session identity', {
+          phase: 'handshake',
+        });
       }
+      this.handshakeSessionId = response.data.sessionId;
+      this.handshakeResolved = true;
     } catch (error) {
       clearTimeout(timeout);
       throw error;
@@ -381,34 +395,12 @@ export class PiRpcClient {
   /** Everything that is not a command response: events + extension UI. */
   private async handleNonResponse(message: Record<string, unknown>): Promise<void> {
     if (message.type === 'extension_ui_request') {
-      await this.handleExtensionUiRequest(message as unknown as PiExtensionUiRequest);
+      const request = message as unknown as PiExtensionUiRequest;
+      if (!this.operationContext?.consume(request)) this.uiRequests.dispatch(request);
       return;
     }
+    if (message.type === 'agent_settled') this.uiRequests.cancelAll();
     await this.options.onEvent(message as PiRpcEvent);
-  }
-
-  private async handleExtensionUiRequest(request: PiExtensionUiRequest): Promise<void> {
-    if (this.operationContext?.consume(request)) return;
-    const method = request.method;
-    if (!DIALOG_METHODS.has(method)) {
-      // Fire-and-forget — surface to the host, never answer.
-      await this.options.onExtensionUiRequest?.(request);
-      return;
-    }
-
-    let response: PiExtensionUiResponse | undefined;
-    try {
-      response = await this.options.onExtensionUiRequest?.(request);
-    } catch {
-      response = undefined;
-    }
-    // No host handler (or it declined) → cancel so the extension unblocks.
-    this.transport.notify(
-      (response ?? { cancelled: true, id: request.id, type: 'extension_ui_response' }) as Record<
-        string,
-        unknown
-      >,
-    );
   }
 
   private toConnectionError(error: unknown): PiRpcConnectionError {

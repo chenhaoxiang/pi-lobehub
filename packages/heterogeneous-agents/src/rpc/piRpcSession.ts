@@ -7,8 +7,6 @@ import { PiOperationContextUnavailableError } from './piRpcOperationContext';
 import {
   PI_RPC_ABORT_TIMEOUT_MS,
   type PiAgentSettledEvent,
-  type PiExtensionUiRequest,
-  type PiExtensionUiResponse,
   type PiMessageEndEvent,
   type PiMessageUpdateEvent,
   type PiRpcCommand,
@@ -17,6 +15,7 @@ import {
   type PiRpcPromptResponseData,
   type PiSessionEvent,
 } from './piRpcProtocol';
+import type { PiRpcUiHandler } from './piRpcUiRequests';
 
 /** Text + base64 image content for a single prompt. */
 export interface PiRpcPromptInput {
@@ -40,13 +39,11 @@ export interface PiRpcSessionOptions {
   cwd: string;
   detached?: boolean;
   env: NodeJS.ProcessEnv;
-  /** How long a run may go without any event before it is considered stale. */
+  /** Idle event gap, excluding native tools and bounded human-input waits. */
   inactivityTimeoutMs?: number;
   onEvents: (events: AgentStreamEvent[]) => void | Promise<void>;
   /** Extension UI dialogs — return a response to answer, or `undefined` to cancel. */
-  onExtensionUiRequest?: (
-    request: PiExtensionUiRequest,
-  ) => Promise<PiExtensionUiResponse | undefined> | PiExtensionUiResponse | undefined;
+  onExtensionUiRequest?: PiRpcUiHandler;
   onRawStdout?: (chunk: Buffer) => void;
   onRuntimeStatus: (status: HeterogeneousAgentRuntimeStatus) => void;
   /** Freshest native pi session id (RPC mode: from the get_state handshake). */
@@ -54,7 +51,7 @@ export interface PiRpcSessionOptions {
   onStderr: (data: string) => void | Promise<void>;
   /** Renderer-side operation id stamped onto every emitted event. */
   operationId: string;
-  /** Native pi session id to resume (`--session-id <id>` at spawn). */
+  /** Existing native pi session id to resume (`--session <id>` at spawn). */
   resumeSessionId?: string;
   /** LobeHub session id — used for runtime status and diagnostics only. */
   sessionId: string;
@@ -114,6 +111,8 @@ export class PiRpcSession {
   private closePromise?: Promise<void>;
   private closed = false;
   private reuseDisabled = false;
+  private readonly activeTools = new Set<string>();
+  private pendingUiCount = 0;
 
   constructor(private readonly options: PiRpcSessionOptions) {
     this.callbacks = options;
@@ -128,16 +127,38 @@ export class PiRpcSession {
   ): PiRpcClient {
     const options = this.options;
     return new PiRpcClient({
-      // Resume the native pi session when one is known — mirrors the legacy
-      // `--session-id` resume of the json path.
-      args: [...(resumeSessionId ? ['--session-id', resumeSessionId] : []), ...options.args],
+      // --session requires existing context. --session-id is open-or-create
+      // and can silently replace a lost session with an empty one.
+      args: [...(resumeSessionId ? ['--session', resumeSessionId] : []), ...options.args],
       commandPath: options.commandPath,
       cwd: options.cwd,
       detached: options.detached,
       env: options.env,
       onError: (error) => this.failRun(error),
       onEvent: (event) => this.handleEvent(event),
-      onExtensionUiRequest: options.onExtensionUiRequest,
+      onExtensionUiRequest: async (request, signal) => {
+        const dialog = ['select', 'confirm', 'input', 'editor'].includes(request.method);
+        if (dialog) {
+          this.pendingUiCount++;
+          this.clearInactivityTimer();
+        }
+        let cancelWait: (() => void) | undefined;
+        try {
+          if (signal.aborted) return;
+          const cancelled = new Promise<undefined>((resolve) => {
+            cancelWait = () => resolve(undefined);
+            signal.addEventListener('abort', cancelWait, { once: true });
+          });
+          return await Promise.race([options.onExtensionUiRequest?.(request, signal), cancelled]);
+        } finally {
+          if (cancelWait) signal.removeEventListener('abort', cancelWait);
+          if (dialog) {
+            this.pendingUiCount--;
+            this.lastEventAt = Date.now();
+            if (this.runStarted && !this.closed) this.armInactivityTimer();
+          }
+        }
+      },
       onRawStdout: options.onRawStdout,
       onStderr: (data) => this.callbacks.onStderr(data),
       operationContext,
@@ -222,6 +243,7 @@ export class PiRpcSession {
   private async runPrompt(prompt: PiRpcPromptInput): Promise<{ aborted: boolean }> {
     // Reserve before awaiting startup. Each turn needs a fresh PiAdapter.
     this.pipeline = this.createPipeline();
+    this.activeTools.clear();
     this.aborted = false;
     let contextInstalled = false;
     const completion = new Promise<{ aborted: boolean }>((resolve, reject) => {
@@ -385,6 +407,11 @@ export class PiRpcSession {
     }
 
     if (!this.runStarted) return;
+    if (event.type === 'tool_execution_start' && typeof event.toolCallId === 'string') {
+      this.activeTools.add(event.toolCallId);
+    } else if (event.type === 'tool_execution_end' && typeof event.toolCallId === 'string') {
+      this.activeTools.delete(event.toolCallId);
+    }
     this.armInactivityTimer();
     if (isTerminalAbortedEvent(event)) this.aborted = true;
     const events = await this.pushEvent(event, pipeline);
@@ -423,6 +450,7 @@ export class PiRpcSession {
 
   private armInactivityTimer(): void {
     this.clearInactivityTimer();
+    if (this.pendingUiCount > 0 || this.activeTools.size > 0) return;
     this.inactivityTimer = setTimeout(() => {
       if (!this.runStarted) return;
       const error = new PiRpcConnectionError(

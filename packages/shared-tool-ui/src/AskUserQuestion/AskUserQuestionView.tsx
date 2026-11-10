@@ -82,6 +82,9 @@ export interface AskUserQuestionViewProps extends AskUserFormApi {
 export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
   const {
     actionsPortalTarget,
+    answerMode,
+    allowCustomAnswer = true,
+    allowSupplement = true,
     activeQuestion,
     activeTab,
     autoSubmitted,
@@ -122,14 +125,14 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
   const highlightedIndex = useMemo(() => {
     if (!activeQuestion) return undefined;
     const stored = highlightMap[activeQuestion.question];
-    if (stored != null) return stored;
+    if (stored != null && (allowCustomAnswer || stored < activeQuestion.options.length)) return stored;
     if (!activeQuestion.multiSelect) {
       const picked = picks[activeQuestion.question];
       const idx = activeQuestion.options.findIndex((option) => optionValue(option) === picked);
       if (idx >= 0) return idx;
     }
     return 0;
-  }, [activeQuestion, highlightMap, picks]);
+  }, [activeQuestion, highlightMap, picks, allowCustomAnswer]);
 
   const setHighlight = useCallback((q: AskUserQuestionItem, idx: number) => {
     setHighlightMap((m) => ({ ...m, [q.question]: idx }));
@@ -201,7 +204,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
           event.preventDefault();
           setHighlight(q, idx);
           handleToggle(q, optionValue(q.options[idx]), { submitOnComplete: true });
-        } else if (idx === q.options.length) {
+        } else if (allowCustomAnswer && idx === q.options.length) {
           event.preventDefault();
           setHighlight(q, q.options.length);
           focusCustomInput();
@@ -212,7 +215,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
       if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
         if (!rowNavEnabled) return;
         event.preventDefault();
-        const total = q.options.length + 1; // +1: the free-text row
+        const total = q.options.length + (allowCustomAnswer ? 1 : 0);
         const delta = event.key === 'ArrowUp' ? -1 : 1;
         const next = ((highlightedIndex ?? 0) + delta + total) % total;
         setHighlight(q, next);
@@ -315,7 +318,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
 
   return (
     <Flexbox gap={12} ref={rootRef}>
-      {questions.length > 0 && (
+      {(questions.length > 1 || (questions.length > 0 && allowSupplement)) && (
         <Tabs
           activeKey={escapeActive ? 'escape' : supplementActive ? 'supplement' : activeTab}
           variant="square"
@@ -325,7 +328,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
           }}
           items={[
             ...questions.map((q, idx) => {
-              const done = isQuestionAnswered(q, picks, custom);
+              const done = isQuestionAnswered(q, picks, custom, answerMode);
               return {
                 key: String(idx),
                 label: (
@@ -336,7 +339,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
                 ),
               };
             }),
-            {
+            ...(allowSupplement ? [{
               key: 'supplement',
               label: (
                 <Flexbox horizontal align="center" gap={6}>
@@ -344,7 +347,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
                   <Text>{labels.supplementEnter}</Text>
                 </Flexbox>
               ),
-            },
+            }] : []),
             ...(isMulti
               ? [
                   // Replace-all stays at the far right because it discards the
@@ -399,6 +402,7 @@ export const AskUserQuestionView = memo<AskUserQuestionViewProps>((props) => {
       ) : (
         activeQuestion && (
           <QuestionPanel
+            allowCustomAnswer={allowCustomAnswer}
             answer={picks[activeQuestion.question]}
             customPlaceholder={labels.customPlaceholder}
             customValue={custom[activeQuestion.question] ?? ''}
