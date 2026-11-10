@@ -152,10 +152,10 @@ export class TaskResultBridgeService {
       reason,
     });
 
-    // Idempotency: a deterministic id keyed on (task, completed topic). QStash
-    // can redeliver the `on-topic-complete` webhook (which drives this bridge) —
-    // the second create loses the PK race and we skip.
-    const messageId = `task-cb-${taskId}-${topicId ?? params.operationId}`;
+    // Idempotency belongs to the operation, not its conversation. A task can
+    // deliver, be rejected, and deliver again in the same continued topic.
+    // Retries of one operation reuse its card; a rework gets its own result.
+    const messageId = `task-cb-${taskId}-${params.operationId}`;
     // Pass workspaceId: a workspace-scoped task's origin topic lives under the
     // team workspace, so the leaf lookup + create must use the matching
     // ownership predicate — a personal-mode model (workspace_id IS NULL) finds

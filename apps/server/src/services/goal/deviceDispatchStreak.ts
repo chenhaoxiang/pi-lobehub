@@ -81,10 +81,16 @@ const writeFailedAt = async (
  */
 export const parkDeviceUnavailableDispatch = async (
   taskModel: TaskModel,
-  task: Pick<TaskItem, 'id' | 'totalTopics'>,
+  task: Pick<TaskItem, 'id' | 'totalTopics'> & { startedAt?: Date | null },
   error: string,
 ) => {
-  const parked = await taskModel.updateStatusIfCurrent(task.id, 'running', 'paused', { error });
+  const parked = await taskModel.updateStatusIfCurrent(
+    task.id,
+    'running',
+    'paused',
+    { error },
+    task.startedAt ?? undefined,
+  );
   if (!parked || (parked.totalTopics ?? 0) > (task.totalTopics ?? 0)) return;
   const failedAt = [...readFailedAt(parked), new Date().toISOString()].slice(-MAX_KEPT_FAILURES);
   await writeFailedAt(taskModel, parked, failedAt);

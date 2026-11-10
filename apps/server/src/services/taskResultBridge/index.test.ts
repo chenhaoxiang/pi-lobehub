@@ -115,11 +115,11 @@ describe('TaskResultBridgeService.deliver', () => {
 
   beforeEach(() => {
     getUserSettings.mockReset().mockResolvedValue(undefined);
-    createMsg.mockReset().mockResolvedValue({ id: 'task-cb-task-1-topic-done' } as any);
+    createMsg.mockReset().mockResolvedValue({ id: 'task-cb-task-1-op-task' } as any);
     createPending.mockReset().mockResolvedValue({ id: 'receipt-1' });
     claimPending
       .mockReset()
-      .mockResolvedValue([{ callbackMessageId: 'task-cb-task-1-topic-done', id: 'receipt-1' }]);
+      .mockResolvedValue([{ callbackMessageId: 'task-cb-task-1-op-task', id: 'receipt-1' }]);
     attachCreatorOperation.mockReset().mockResolvedValue(undefined);
     release.mockReset().mockResolvedValue(undefined);
     settle.mockReset().mockResolvedValue('topic-origin');
@@ -130,7 +130,7 @@ describe('TaskResultBridgeService.deliver', () => {
     getLastLeaf
       .mockReset()
       .mockResolvedValueOnce('msg-current-leaf')
-      .mockResolvedValue('task-cb-task-1-topic-done');
+      .mockResolvedValue('task-cb-task-1-op-task');
     tryReserve.mockReset().mockResolvedValue(true);
     releaseReservation.mockReset().mockResolvedValue(undefined);
     execAgent
@@ -164,6 +164,25 @@ describe('TaskResultBridgeService.deliver', () => {
       expect(execAgent.mock.calls[0][0].userInterventionConfig).toEqual(intervention);
     },
   );
+
+  it('delivers two operations of one continued task topic as two distinct result cards', async () => {
+    const cards = new Map<string, unknown>();
+    findMessage.mockImplementation(async (id: string) => cards.get(id) ?? null);
+    createMsg.mockImplementation(async (message, id: string) => {
+      cards.set(id, message);
+      return { id };
+    });
+    const bridge = new TaskResultBridgeService(db, TEST_USER);
+    await bridge.deliver(baseParams);
+    await bridge.deliver({ ...baseParams, operationId: 'op-rework' });
+    await bridge.deliver({ ...baseParams, operationId: 'op-rework' });
+    expect(createMsg).toHaveBeenCalledTimes(2);
+    expect(createPending.mock.calls.map(([receipt]) => receipt.callbackMessageId)).toEqual([
+      'task-cb-task-1-op-task',
+      'task-cb-task-1-op-rework',
+      'task-cb-task-1-op-rework',
+    ]);
+  });
 
   it('defaults a user-facing creator to manual approval', async () => {
     await new TaskResultBridgeService(db, TEST_USER).deliver(baseParams);
@@ -201,14 +220,14 @@ describe('TaskResultBridgeService.deliver', () => {
     });
     expect(params.content).toContain('Fixed the null deref');
     expect(params.content).toContain('ship it');
-    // deterministic id keyed on (task, completed topic) for idempotency
-    expect(id).toBe('task-cb-task-1-topic-done');
+    // deterministic id keyed on (task, operation) for idempotency
+    expect(id).toBe('task-cb-task-1-op-task');
 
     expect(execAgent).toHaveBeenCalledTimes(1);
     expect(execAgent.mock.calls[0][0]).toMatchObject({
       agentId: 'agent-creator',
       appContext: { topicId: 'topic-origin' },
-      parentMessageId: 'task-cb-task-1-topic-done',
+      parentMessageId: 'task-cb-task-1-op-task',
       suppressUserMessage: true,
       // Its own trigger, not Agent Signal: the wakeup is billed and listed as task follow-up,
       // and the Labs → Self-evolving switch that gates Agent Signal does not control it.
@@ -246,7 +265,7 @@ describe('TaskResultBridgeService.deliver', () => {
   });
 
   it('resumes an incomplete wakeup when the callback message already exists', async () => {
-    findMessage.mockResolvedValueOnce({ id: 'task-cb-task-1-topic-done' });
+    findMessage.mockResolvedValueOnce({ id: 'task-cb-task-1-op-task' });
 
     await new TaskResultBridgeService(db, TEST_USER).deliver(baseParams);
 

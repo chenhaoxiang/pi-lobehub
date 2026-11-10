@@ -103,7 +103,7 @@ describe('TaskRunnerService.runTask explicit device', () => {
     vi.mocked(TaskTopicModel).mockImplementation(function () {
       return {
         add: vi.fn(),
-        findByTaskId: vi.fn().mockResolvedValue([]),
+        findByTaskId: vi.fn().mockResolvedValue([{ status: 'completed', topicId: 'tpc-old' }]),
         updateOperationId: vi.fn(),
         updateStatus: vi.fn(),
       } as any;

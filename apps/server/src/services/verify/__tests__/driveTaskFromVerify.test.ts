@@ -15,6 +15,11 @@ import { driveTaskFromVerify, finalizeVerifyRun } from '../settle';
 import { attachTaskRunToAcceptance, resolveTaskAcceptance } from '../taskAcceptance';
 
 vi.mock('../goalReview', () => ({ reviewGoalDelivery: vi.fn() }));
+vi.mock('@/database/models/taskTopic', () => ({
+  TaskTopicModel: vi.fn(function () {
+    return { isSupersededOperation: vi.fn().mockResolvedValue(false) };
+  }),
+}));
 const { completeTaskForDelivery } = vi.hoisted(() => ({ completeTaskForDelivery: vi.fn() }));
 vi.mock('../acceptanceService', () => ({
   AcceptanceService: vi.fn(function () {

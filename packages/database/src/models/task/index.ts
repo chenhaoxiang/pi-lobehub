@@ -325,8 +325,16 @@ export class TaskModel {
     currentStatus: string,
     status: string,
     extra?: { completedAt?: Date | null; error?: string | null; startedAt?: Date },
+    expectedStartedAt?: Date,
   ): Promise<TaskItem | null> {
-    return rows.updateStatusIfCurrent(this.ctx, id, currentStatus, status, extra);
+    return rows.updateStatusIfCurrent(
+      this.ctx,
+      id,
+      currentStatus,
+      status,
+      extra,
+      expectedStartedAt,
+    );
   }
 
   async updateStatusIfCurrentForIds(

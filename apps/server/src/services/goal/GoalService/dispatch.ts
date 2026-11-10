@@ -262,6 +262,7 @@ export const dispatchWork = async (
 
   try {
     const run = await new TaskRunnerService(ctx.db, ctx.userId, ctx.workspaceId).runTask({
+      goalClaimStartedAt: claimed.startedAt!,
       extraPrompt:
         new GoalSupervisorService(ctx.db, ctx.userId, ctx.workspaceId).recoveryInstruction(
           graph,
@@ -303,7 +304,11 @@ export const dispatchWork = async (
     // sleeping laptop became three uncharged runs per sweep with no bound.
     const message = error instanceof Error ? error.message : String(error);
     if (isDeviceUnavailableFailure(message)) {
-      await parkDeviceUnavailableDispatch(ctx.taskModel, task, message).catch((releaseError) => {
+      await parkDeviceUnavailableDispatch(
+        ctx.taskModel,
+        { ...task, startedAt: claimed.startedAt },
+        message,
+      ).catch((releaseError) => {
         console.error('[GoalService.tick] failed to park claimed task:', releaseError);
       });
       return {
@@ -317,7 +322,13 @@ export const dispatchWork = async (
     // We claimed the task, so nothing else will put it back. Release it or the
     // Task stays 'running' with no run behind it and only the lease reclaims it.
     await ctx.taskModel
-      .updateStatusIfCurrent(task.id, 'running', task.status)
+      .updateStatusIfCurrent(
+        task.id,
+        'running',
+        task.status,
+        undefined,
+        claimed.startedAt ?? undefined,
+      )
       .catch((releaseError) => {
         console.error('[GoalService.tick] failed to release claimed task:', releaseError);
       });

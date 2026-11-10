@@ -38,3 +38,48 @@ jobs:
           node .github/scripts/forkWorkflowPolicy.mjs
       - name: Check Pi RPC framing, version, identity and question regressions
         run: node tmp/fork-ci-tools/node_modules/vitest/vitest.mjs run --config .github/scripts/piRpcChecks.config.mjs
+
+  task-goal-closure:
+    if: github.repository == 'chenhaoxiang/pi-lobehub'
+    name: task-goal-closure
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      npm_config_manage_package_manager_versions: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned workspace tools without lifecycle scripts
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --prefix tmp/workspace-ci-tools pnpm@12.4.1 @oven/bun-linux-x64@1.4.4
+          echo "$GITHUB_WORKSPACE/tmp/workspace-ci-tools/node_modules/@oven/bun-linux-x64/bin" >> "$GITHUB_PATH"
+      - name: Install root workspace only (no CLI, credentials or release scripts)
+        run: node tmp/workspace-ci-tools/node_modules/pnpm/bin/pnpm.cjs install --ignore-scripts --child-concurrency=1 --network-concurrency=4
+      - name: Check Task, Goal, ownership, verification and rework regressions
+        run: >-
+          node node_modules/vitest/vitest.mjs run --project server --maxWorkers=3
+          apps/server/src/services/taskRunner
+          apps/server/src/services/taskLifecycle
+          apps/server/src/services/taskResultBridge
+          apps/server/src/services/taskGraph
+          apps/server/src/services/goal/advanceGoal.test.ts
+          apps/server/src/services/goal/assignment.taskOwner.test.ts
+          apps/server/src/services/goal/GoalService/__tests__/dispatch.test.ts
+          apps/server/src/services/goal/GoalService/__tests__/recovery.test.ts
+          apps/server/src/services/goal/GoalService/__tests__/rework.test.ts
+          apps/server/src/services/goal/GoalService/__tests__/seedDependencies.test.ts
+          apps/server/src/services/verify/settle.ownership.test.ts
+          apps/server/src/services/verify/__tests__/driveTaskFromVerify.test.ts
+          apps/server/src/services/verify/__tests__/acceptanceTaskLifecycle.test.ts
+          apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
+          apps/server/src/services/verify/__tests__/carryForward.db.test.ts
+      - name: Check real database run claims and owner isolation
+        working-directory: packages/database
+        run: node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 --silent='passed-only' src/models/__tests__/task.runClaim.test.ts src/models/__tests__/taskTopic.takeOver.test.ts src/models/__tests__/taskTopic.reopenSettledRun.test.ts
+      - name: Check application and new regression types
+        run: bun run type-check && bunx --no-install tsrs --noEmit -p .github/scripts/piTaskGoalTypes.json --checkers 4

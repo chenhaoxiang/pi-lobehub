@@ -11,6 +11,7 @@ import debug from 'debug';
 import { AgentOperationModel } from '@/database/models/agentOperation';
 import { GoalModel } from '@/database/models/goal';
 import { TaskModel } from '@/database/models/task';
+import { TaskTopicModel } from '@/database/models/taskTopic';
 import { VerifyCheckResultModel } from '@/database/models/verifyCheckResult';
 import { VerifyRunModel } from '@/database/models/verifyRun';
 import type { VerifyCheckResultItem } from '@/database/schemas/verify';
@@ -152,6 +153,28 @@ export const driveTaskFromVerify = async (
     const operationModel = new AgentOperationModel(db, userId, workspaceId);
     const op = await operationModel.findById(operationId);
     const taskOperation = await resolveTaskOperation(operationModel, operationId);
+    const taskModel = new TaskModel(db, userId, workspaceId);
+    const ownsTaskRun = async () => {
+      if (!taskOperation?.taskId) return true;
+      const current = await taskModel.findById(taskOperation.taskId);
+      if (!current) return false;
+      // A new topic is another attempt of the same business Task. A continuation
+      // can also replace its Operation without changing the topic at all.
+      if (current.currentTopicId && current.currentTopicId !== taskOperation.topicId) return false;
+      if (
+        taskOperation.topicId &&
+        (await new TaskTopicModel(db, userId, workspaceId).isSupersededOperation(
+          taskOperation.topicId,
+          operationId,
+        ))
+      )
+        return false;
+      const latest = await runModel.findByOperation(operationId);
+      return latest?.userDecision !== 'reject';
+    };
+    // Do not consume the drive claim on a stale result or an unreadable owner.
+    // Its Verify/report remains evidence of that round, never the new attempt.
+    if (!(await ownsTaskRun())) return;
 
     // Last defence before the review: a round the builder planned itself can still
     // arrive here unattached, because the CLI-driven verify path never passes
@@ -180,7 +203,6 @@ export const driveTaskFromVerify = async (
 
     if (!op || !taskOperation?.taskId) return; // not a task-bound run — nothing to drive
 
-    const taskModel = new TaskModel(db, userId, workspaceId);
     const task = await taskModel.findById(taskOperation.taskId);
     if (!task || TERMINAL_TASK_STATUS.has(task.status)) return; // task already settled
 
@@ -202,6 +224,10 @@ export const driveTaskFromVerify = async (
       run.status === 'passed'
         ? await reviewGoalDelivery(db, userId, taskOperation.taskId, operationId, workspaceId)
         : undefined;
+
+    // Review can await an independent judge while a person starts a new attempt
+    // or rejects this delivery. Re-check before repairing or moving the Task.
+    if (!(await ownsTaskRun())) return;
 
     // A rejected check that can be repaired is fixed inside this round, by the
     // same builder in the same topic, rather than pausing the Task into a whole

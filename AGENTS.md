@@ -15,7 +15,10 @@ branches are read-only inputs, not this fork's deployment or installation channe
 - The user has authorised implementation and normal PR delivery of batch 1
   (fork maintenance, safe CI and isolated local environment) and batch 2
   (maintained Pi compatibility, structured questions and scoped control).
-  Follow the existing Change; later task/Desk migration remains planned.
+  The user has now also authorised batch 3 (P3): the existing Task/Goal,
+  responsibility, dependency, Pi execution and verification/acceptance/rework
+  loop, including normal PR delivery. Reuse the same Change; later Desk
+  capability migration and P4–P6 remain planned.
   Do not publish, deploy production, remove Desk or force-reload live Pi.
   Real-model verification needs the actual authorised test configuration and
   spending scope; provider-free checks never borrow production credentials.

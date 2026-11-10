@@ -251,6 +251,7 @@ describe('GoalService', () => {
 
     expect(recovered).toMatchObject({ outcome: 'waiting_external', taskId: created.taskId });
     expect(runSpy).toHaveBeenCalledWith({
+      goalClaimStartedAt: expect.any(Date),
       maxSteps: 500,
       taskId: created.taskId,
       trigger: 'goal',
@@ -307,6 +308,7 @@ describe('GoalService', () => {
     expect(settleSpy).toHaveBeenCalledWith('op-stale', expect.any(Date), undefined);
     expect(timeoutSpy).toHaveBeenCalledWith(created.taskId, 'topic-stale', 'timeout');
     expect(runSpy).toHaveBeenCalledWith({
+      goalClaimStartedAt: expect.any(Date),
       maxSteps: undefined,
       taskId: created.taskId,
       trigger: 'goal',

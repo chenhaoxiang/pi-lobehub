@@ -5,7 +5,7 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-release_scope: 全本机验证版；第一批与第二批已授权实施
+release_scope: 全本机验证版；第一二批已交付，第三批P3已授权实施
 ---
 
 # Design
@@ -13,6 +13,10 @@ release_scope: 全本机验证版；第一批与第二批已授权实施
 ## Context
 
 动机和本轮授权见 [proposal](proposal.md)。本页是该 Change 唯一的方案正文，不另造业务任务、审批或经营数据库。
+
+### 初始分析记录
+
+下表保留初始分析基线，不是当前缺陷/运行状态清单；P0–P2 已修复/交付内容见 [tasks](tasks.md) 的本轮证据。第三批继续复用原状态机，仅按当前代码与真实回归确认缺口。
 
 ### 已核查的设计输入
 

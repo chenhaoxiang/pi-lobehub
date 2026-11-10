@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "incremental": false
+  },
+  "extends": "../../tsconfig.type-check.json",
+  "files": [
+    "../../apps/server/src/services/taskRunner/index.startup.test.ts",
+    "../../apps/server/src/services/taskRunner/__tests__/runBinding.test.ts",
+    "../../apps/server/src/services/taskRunner/__tests__/businessClosure.test.ts",
+    "../../apps/server/src/services/verify/settle.ownership.test.ts",
+    "../../apps/server/src/services/goal/GoalService/__tests__/rework.test.ts",
+    "../../packages/database/src/models/__tests__/task.runClaim.test.ts"
+  ],
+  "references": [
+    {
+      "path": "../../apps/desktop"
+    }
+  ]
+}
