@@ -297,6 +297,9 @@ export interface AgentInterventionRenderQuestion {
 }
 
 export interface AgentInterventionRenderArguments {
+  /** Opt-in native runtime policy; absent preserves legacy question behavior. */
+  answerMode?: 'exact-choice' | 'text';
+  textPrefill?: string;
   autoSubmitOnTimeout?: false;
   questions: AgentInterventionRenderQuestion[];
 }

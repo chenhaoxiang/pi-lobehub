@@ -59,9 +59,22 @@ export const sanitizeAgentInterventionRequestForReview = (
     return;
   }
 
-  const rawQuestions = asRecord(parsed)?.questions;
+  const record = asRecord(parsed);
+  const answerMode = record?.answerMode;
+  if (answerMode !== undefined && answerMode !== 'exact-choice' && answerMode !== 'text') return;
+  const textPrefill = record?.textPrefill;
+  if (
+    textPrefill !== undefined &&
+    (answerMode !== 'text' || typeof textPrefill !== 'string' || textPrefill.length > 4000)
+  )
+    return;
+  const rawQuestions = record?.questions;
   if (!Array.isArray(rawQuestions) || rawQuestions.length < 1 || rawQuestions.length > 4) return;
-  if (request.interactionKind !== 'question' && rawQuestions.length !== 1) return;
+  if (
+    (request.interactionKind !== 'question' || answerMode === 'text') &&
+    rawQuestions.length !== 1
+  )
+    return;
 
   const questions: AgentInterventionRenderArguments['questions'] = [];
   const questionTexts = new Set<string>();
@@ -121,6 +134,8 @@ export const sanitizeAgentInterventionRequestForReview = (
   return {
     apiName: request.apiName,
     arguments: JSON.stringify({
+      ...(answerMode ? { answerMode } : {}),
+      ...(textPrefill !== undefined ? { textPrefill: textPrefill as string } : {}),
       ...(asRecord(parsed)?.autoSubmitOnTimeout === false
         ? { autoSubmitOnTimeout: false as const }
         : {}),

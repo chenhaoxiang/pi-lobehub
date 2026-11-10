@@ -41,6 +41,9 @@ export interface AskUserQuestionItem {
  * clarification surfaces so the model's prompts and the UI stay identical.
  */
 export interface AskUserQuestionArgs {
+  /** Opt-in native runtime policy; absent preserves legacy question behavior. */
+  answerMode?: 'exact-choice' | 'text';
+  textPrefill?: string;
   /** Runtime-owned dialogs require an explicit answer, never a countdown default. */
   autoSubmitOnTimeout?: false;
   questions: AskUserQuestionItem[];

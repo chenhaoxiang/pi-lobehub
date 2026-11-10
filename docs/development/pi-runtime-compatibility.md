@@ -5,7 +5,7 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-verified: 2026-11-10
+verified: 2026-11-11
 verification_scope: CLI-device Pi RPC source, provider-free regressions and isolated native Pi/question-package fixture; not business-model or Web end-to-end acceptance
 ---
 
@@ -48,10 +48,10 @@ Each visible bridge invocation has a unique tool-call correlation, even if a
 broken producer reuses a native request id later. Abort, process death, timeout
 and settlement release outstanding waits. Replies to a retired question are
 ignored. The stdio reader does not await human input, so command ACKs, stop
-confirmation and EOF remain readable while a dialog is pending. Missing handlers,
+confirmation and EOF remain readable while a dialog is pending. The prompt/steer/follow-up ACK budget also pauses only during the separately bounded UI wait, then resumes its remaining time; ordinary get_state and truly missing ACKs keep their deadlines. Native extension commands may not ACK until their dialog completes. Missing handlers,
 invalid/off-list answers and unavailable UI cancel; they never approve by default.
 
-Native confirm/select choices round-trip stable option ids. All Pi question
+Native confirm/select choices round-trip stable option ids. Their exact-choice policy hides and rejects custom text/notes; invalid payloads become cancellation before the producer emits any successful terminal ACK. Native input/editor use a raw-text policy that preserves editor prefill, whitespace, newlines and valid empty text without changing the legacy default trim behavior. All Pi question
 arguments also set `autoSubmitOnTimeout: false`, preserved through durable
 sanitization: neither an untouched first option nor a saved but unsubmitted text
 draft becomes an answer at the legacy form countdown. Existing legacy forms keep
@@ -94,13 +94,13 @@ productive or add a durable execution guarantee across gateway/backend restarts.
 
 ## Reproduce checks without model requests
 
-The fork workflow installs only a small isolated runner/parser/debug toolchain
+The fork workflow installs only a small isolated runner/parser/debug/React-hook test toolchain
 and executes the real RPC framing/client/UI bridge/answer correlation/persistence
 sanitization tests. It does not install the whole application or validate all of
 its packages:
 
 ```sh
-npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0 vitest@5.0.0 debug@4.4.3
+npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0 vitest@5.0.0 debug@4.4.3 react@19.2.7 react-dom@19.2.7 @testing-library/react@16.3.3 @testing-library/dom@10.4.2 happy-dom@20.11.15
 node tmp/fork-ci-tools/node_modules/vitest/vitest.mjs run --config .github/scripts/piRpcChecks.config.mjs
 ```
 
@@ -139,6 +139,6 @@ The fixture uses an isolated HOME/agent directory, loads only the selected sourc
 invokes the actual registered question tool from a native extension command, and
 rejects provider requests. On Pi 1.5.0-fork.4 it verified single choice, custom
 Chinese text, Chat, duplicate-label multi-selection and cancel through the actual
-Lobe handle with native session ids and zero provider requests. This is native
+Lobe handle with native session ids and zero provider requests. A separate run held the first real native question for 31,000ms (observed total 37,003ms), exceeding the ordinary 30s ACK budget without failure, then completed all five cases. This is native
 protocol evidence, **not** a real business-model turn, logged-in Web rendering
 acceptance, release, installation, or production readiness claim.

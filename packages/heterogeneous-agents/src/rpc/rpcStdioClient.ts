@@ -34,8 +34,10 @@ export class RpcStdioConnectionError extends Error {
 }
 
 interface PendingRequest {
+  deadline?: number;
   label: string;
   reject: (error: Error) => void;
+  remainingMs?: number;
   resolve: (message: Record<string, unknown>) => void;
   timeout?: ReturnType<typeof setTimeout>;
 }
@@ -91,6 +93,7 @@ export class RpcStdioClient {
   private forceShutdown?: () => void;
   private messageQueue: Promise<void> = Promise.resolve();
   private nextRequestId = 0;
+  private readonly pausedRequestLabels = new Set<string>();
   private readonly stderrDecoder = new StringDecoder('utf8');
   private stderrTail = '';
   private readonly stdoutDecoder = new StringDecoder('utf8');
@@ -183,14 +186,9 @@ export class RpcStdioClient {
         resolve: (response) => resolve(response as T),
       };
       const timeout = timeoutMs ?? this.options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-      if (timeout !== false) {
-        pending.timeout = setTimeout(() => {
-          this.pendingRequests.delete(id);
-          reject(new RpcStdioConnectionError(`RPC request timed out: ${label}`, { phase: 'run' }));
-        }, timeout);
-        pending.timeout.unref?.();
-      }
+      if (timeout !== false) pending.remainingMs = timeout;
       this.pendingRequests.set(id, pending);
+      this.armRequestTimeout(id, pending);
       try {
         this.writeMessage(message);
       } catch (error) {
@@ -199,6 +197,34 @@ export class RpcStdioClient {
         reject(this.toError(error));
       }
     });
+  }
+
+  /** Suspend only named ACK budgets during a separately bounded protocol UI wait. */
+  setRequestTimeoutsPaused(labels: readonly string[], paused: boolean): void {
+    for (const label of labels) {
+      if (paused) this.pausedRequestLabels.add(label);
+      else this.pausedRequestLabels.delete(label);
+    }
+    for (const [id, pending] of this.pendingRequests) {
+      if (!labels.includes(pending.label)) continue;
+      if (paused && pending.timeout) {
+        clearTimeout(pending.timeout);
+        pending.timeout = undefined;
+        pending.remainingMs = Math.max(0, (pending.deadline ?? Date.now()) - Date.now());
+      } else if (!paused && !pending.timeout) this.armRequestTimeout(id, pending);
+    }
+  }
+
+  private armRequestTimeout(id: string, pending: PendingRequest): void {
+    if (pending.remainingMs === undefined || this.pausedRequestLabels.has(pending.label)) return;
+    pending.deadline = Date.now() + pending.remainingMs;
+    pending.timeout = setTimeout(() => {
+      this.pendingRequests.delete(id);
+      pending.reject(
+        new RpcStdioConnectionError(`RPC request timed out: ${pending.label}`, { phase: 'run' }),
+      );
+    }, pending.remainingMs);
+    pending.timeout.unref?.();
   }
 
   /** Fire-and-forget write — no response is awaited. */

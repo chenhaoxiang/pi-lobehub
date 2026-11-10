@@ -19,6 +19,7 @@ export class PiRpcUiRequests {
   constructor(
     private readonly options: {
       onRequest?: PiRpcUiHandler;
+      onWaitingChanged?: (waiting: boolean) => void;
       send: (response: PiExtensionUiResponse) => void;
     },
   ) {}
@@ -46,6 +47,7 @@ export class PiRpcUiRequests {
     const finish = (response: PiExtensionUiResponse | undefined) => {
       if (this.pending.get(request.id) !== entry) return;
       this.pending.delete(request.id);
+      if (!this.pending.size) this.options.onWaitingChanged?.(false);
       clearTimeout(timer);
       controller.abort();
       // The host cannot redirect an answer to a different native question.
@@ -65,6 +67,7 @@ export class PiRpcUiRequests {
       }
     };
     this.pending.set(request.id, entry);
+    if (this.pending.size === 1) this.options.onWaitingChanged?.(true);
     const timeout =
       typeof request.timeout === 'number' && Number.isFinite(request.timeout)
         ? Math.max(0, Math.min(request.timeout, DEFAULT_UI_TIMEOUT_MS))

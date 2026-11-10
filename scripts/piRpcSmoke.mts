@@ -36,6 +36,9 @@ export default function(pi) {
 `,
 );
 const outcomes = [];
+const startedAt = performance.now();
+const requestedDelayMs = Number(process.env.PI_RPC_SMOKE_DELAY_MS || 0);
+assert.ok(Number.isFinite(requestedDelayMs) && requestedDelayMs >= 0 && requestedDelayMs <= 60_000);
 for (const [kind, indices] of [
   ['single', [1]],
   ['custom', [3]],
@@ -50,6 +53,8 @@ for (const [kind, indices] of [
     for await (const event of bridge.events()) {
       if (event.type !== 'agent_intervention_request') continue;
       requests.push(event);
+      if (kind === 'single' && requests.length === 1 && requestedDelayMs > 0)
+        await new Promise((resolve) => setTimeout(resolve, requestedDelayMs));
       const args = JSON.parse(event.data.arguments);
       assert.equal(args.autoSubmitOnTimeout, false);
       const question = args.questions[0];
@@ -135,6 +140,8 @@ assert.deepEqual(outcomes[3].details.selectedIndices, [0, 1, 2]);
 assert.equal(outcomes[4].details.answer, null);
 console.log(
   JSON.stringify({
+    requestedDelayMs,
+    elapsedMs: Math.round(performance.now() - startedAt),
     actualLobeRpcHandle: true,
     selectedSdk: sdk,
     cases: outcomes,

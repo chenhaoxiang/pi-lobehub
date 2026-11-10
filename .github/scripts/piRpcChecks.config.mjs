@@ -11,6 +11,12 @@ export default {
     alias: [
       { find: /^vitest$/, replacement: path.join(tools, 'vitest/dist/index.js') },
       { find: /^debug$/, replacement: path.join(tools, 'debug/src/index.js') },
+      { find: 'react-dom', replacement: path.join(tools, 'react-dom') },
+      { find: 'react', replacement: path.join(tools, 'react') },
+      {
+        find: '@testing-library/react',
+        replacement: path.join(tools, '@testing-library/react/dist/index.js'),
+      },
       {
         find: '@lobechat/utils/managedProcess',
         replacement: path.join(root, 'packages/utils/src/managedProcess.ts'),
@@ -27,7 +33,11 @@ export default {
       'packages/heterogeneous-agents/src/rpc/piRpcQuestionBridge.test.ts',
       'packages/heterogeneous-agents/src/rpc/rpcStdioClient.test.ts',
       'packages/heterogeneous-agents/src/askUser/AskUserBridge.test.ts',
+      'packages/heterogeneous-agents/src/askUser/AskUserBridge.validation.test.ts',
       'packages/agent-gateway-client/src/intervention.test.ts',
+      'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.test.ts',
+      'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.explicitAnswer.test.ts',
+      'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.piBridge.test.ts',
     ],
   },
 };

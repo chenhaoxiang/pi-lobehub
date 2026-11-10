@@ -101,6 +101,8 @@ export class PiRpcClient {
     this.options = options;
     this.uiRequests = new PiRpcUiRequests({
       onRequest: options.onExtensionUiRequest,
+      onWaitingChanged: (waiting) =>
+        this.transport.setRequestTimeoutsPaused(['prompt', 'steer', 'follow_up'], waiting),
       send: (response) => this.transport.notify({ ...response }),
     });
     if (options.operationContext) this.operationContext = new PiRpcOperationContext();

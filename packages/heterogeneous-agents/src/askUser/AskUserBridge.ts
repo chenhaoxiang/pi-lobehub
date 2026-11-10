@@ -43,6 +43,8 @@ export interface PendingArgs {
    * stand-alone tests, but the renderer won't be able to correlate.
    */
   toolCallId?: string;
+  /** Producer-owned validation runs before any successful terminal ACK. */
+  validateResult?: (result: unknown) => boolean;
 }
 
 export interface PendingOptions {
@@ -68,6 +70,7 @@ interface PendingEntry {
   cleanup: () => void;
   reject: (err: unknown) => void;
   resolve: (answer: InterventionAnswer) => void;
+  validateResult?: (result: unknown) => boolean;
 }
 
 export interface AskUserBridgeOptions {
@@ -183,7 +186,12 @@ export class AskUserBridge {
         if (progressTimer) clearInterval(progressTimer);
       };
 
-      this.pending_.set(toolCallId, { cleanup, reject, resolve });
+      this.pending_.set(toolCallId, {
+        cleanup,
+        reject,
+        resolve,
+        validateResult: args.validateResult,
+      });
 
       // Emit the intervention request AFTER setting up the pending entry,
       // so any synchronous resolve from a test fixture finds the slot.
@@ -227,6 +235,21 @@ export class AskUserBridge {
     if (!entry) return;
     this.pending_.delete(toolCallId);
     entry.cleanup();
+    if (!payload.cancelled && entry.validateResult) {
+      let valid = false;
+      try {
+        valid = entry.validateResult(payload.result);
+      } catch {
+        /* fail closed */
+      }
+      if (!valid)
+        payload = {
+          ...payload,
+          cancelled: true,
+          cancelReason: 'user_cancelled',
+          result: undefined,
+        };
+    }
     // Echo the resolution on the outbound stream. For user-driven submits
     // the consumer has already optimistically updated, but emitting keeps
     // the wire contract symmetric (request → response) and lets late

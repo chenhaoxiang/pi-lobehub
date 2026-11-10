@@ -1,4 +1,4 @@
-import type { AskUserDraft, AskUserQuestionItem } from './types';
+import type { AskUserDraft, AskUserQuestionArgs, AskUserQuestionItem } from './types';
 
 /**
  * The one sentinel key, and it lives in the *submit payload* — never in the
@@ -73,8 +73,10 @@ export const isQuestionAnswered = (
   q: AskUserQuestionItem,
   picks: Record<string, string | string[]>,
   custom: Record<string, string>,
+  mode?: AskUserQuestionArgs['answerMode'],
 ): boolean => {
-  if (custom[q.question]?.trim()) return true;
+  if (mode === 'text') return true;
+  if (mode !== 'exact-choice' && custom[q.question]?.trim()) return true;
   const a = picks[q.question];
   return q.multiSelect ? Array.isArray(a) && a.length > 0 : !!a;
 };
@@ -89,10 +91,12 @@ export const buildSubmitPayload = (
   questions: AskUserQuestionItem[],
   picks: Record<string, string | string[]>,
   custom: Record<string, string>,
+  mode?: AskUserQuestionArgs['answerMode'],
 ): Record<string, string | string[]> => {
   const payload: Record<string, string | string[]> = {};
   for (const q of questions) {
-    const text = custom[q.question]?.trim();
+    if (mode === 'text') { payload[q.question] = custom[q.question] ?? ''; continue; }
+    const text = mode === 'exact-choice' ? undefined : custom[q.question]?.trim();
     if (q.multiSelect) {
       const chosen = Array.isArray(picks[q.question]) ? (picks[q.question] as string[]) : [];
       const merged = text ? [...chosen, text] : chosen;

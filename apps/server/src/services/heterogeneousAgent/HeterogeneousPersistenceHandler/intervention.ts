@@ -64,6 +64,7 @@ const buildHeterogeneousReviewDetail = (
   request: AgentInterventionRequestData,
 ): Extract<AgentInterventionReviewDetail, { type: 'permission' | 'plan' | 'question' }> => {
   const parsed = JSON.parse(request.arguments) as {
+    answerMode?: 'exact-choice' | 'text';
     questions: Array<{
       header: string;
       multiSelect: boolean;
@@ -107,8 +108,14 @@ const buildHeterogeneousReviewDetail = (
         // plus whole-form freeform and a supplement note, and the producer's
         // bridge formats all three. Declare them so the claim accepts typed
         // answers instead of treating them as off-list selections.
-        answerPolicy: { allowFreeform: true, allowSupplement: true },
-        questions: questions.map((question) => ({ ...question, allowCustomAnswer: true })),
+        answerPolicy: {
+          allowFreeform: parsed.answerMode === undefined,
+          allowSupplement: parsed.answerMode === undefined,
+        },
+        questions: questions.map((question) => ({
+          ...question,
+          allowCustomAnswer: parsed.answerMode !== 'exact-choice',
+        })),
         title: first.header,
         type: 'question',
       };

@@ -28,6 +28,7 @@ const styles = stylex.create({
 });
 
 interface QuestionPanelProps {
+  allowCustomAnswer?: boolean;
   /** The picked option id(s), falling back to labels for legacy options. */
   answer: string | string[] | undefined;
   /** Placeholder for the trailing "write your own" free-text row. */
@@ -68,6 +69,7 @@ interface QuestionPanelProps {
 export const QuestionPanel = memo<QuestionPanelProps>(
   ({
     question,
+    allowCustomAnswer = true,
     answer,
     customValue,
     customPlaceholder,
@@ -121,7 +123,7 @@ export const QuestionPanel = memo<QuestionPanelProps>(
           })}
           {/* Last item: let the user write their own answer for this question.
               Numbered as the next option so it reads as one more choice. */}
-          <Flexbox
+          {allowCustomAnswer && <Flexbox
             horizontal
             align="center"
             className={stylex.props(styles.customRow).className}
@@ -163,7 +165,7 @@ export const QuestionPanel = memo<QuestionPanelProps>(
                 onPressEnter();
               }}
             />
-          </Flexbox>
+          </Flexbox>}
         </Flexbox>
       </Flexbox>
     );

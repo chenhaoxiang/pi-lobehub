@@ -356,6 +356,46 @@ describe('PiRpcClient', () => {
     }
   });
 
+  it('pauses only prompt ACK time while a bounded UI dialog waits, then resumes the remaining budget', async () => {
+    let answer!: (value: any) => void;
+    const onUi = vi.fn(() => new Promise<any>((resolve) => (answer = resolve)));
+    const { client, stdout, writes } = await createReadyClient({ onExtensionUiRequest: onUi });
+    vi.useFakeTimers();
+    const rejected = vi.fn();
+    const prompt = client.command({ type: 'prompt', message: '/fixture-question' }).catch(rejected);
+    const promptId = writes.at(-1)!.id;
+    stdout.write(
+      `${JSON.stringify({ id: 'slow-human', method: 'input', title: 'Wait', type: 'extension_ui_request' })}\n`,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onUi).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(rejected).not.toHaveBeenCalled();
+    // Other commands retain their deadline, even with human input pending.
+    const probeRejected = vi.fn();
+    const probe = client.command({ type: 'get_state' }, 100).catch(probeRejected);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(probeRejected).toHaveBeenCalledOnce();
+    await probe;
+    answer({ id: 'slow-human', type: 'extension_ui_response', value: 'done' });
+    await vi.advanceTimersByTimeAsync(0);
+    stdout.write(
+      `${JSON.stringify({ type: 'response', id: promptId, command: 'prompt', success: true, data: { disposition: 'handled' } })}\n`,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    await prompt;
+    expect(rejected).not.toHaveBeenCalled();
+    // A genuinely missing ACK still times out after the UI releases it.
+    const lost = client.command({ type: 'prompt', message: 'missing ACK' }).catch(rejected);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await lost;
+    expect(rejected).toHaveBeenCalledOnce();
+    const closing = client.close();
+    await vi.advanceTimersByTimeAsync(1);
+    await closing;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('rejects a get_state response without native session identity', async () => {
     const { child, stdout, writes } = createProcess();
     spawnMock.mockReturnValue(child);
