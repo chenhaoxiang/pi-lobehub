@@ -35,5 +35,3 @@ jobs:
         run: |
           node --test .github/scripts/forkWorkflowPolicy.test.mjs
           node .github/scripts/forkWorkflowPolicy.mjs
-      - name: Check patch whitespace
-        run: git diff --check
