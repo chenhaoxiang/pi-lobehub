@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   analyze:
+    if: github.repository == 'lobehub/lobehub'
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 60

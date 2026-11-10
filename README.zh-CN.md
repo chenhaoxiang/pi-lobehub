@@ -1,3 +1,5 @@
+> **Pi LobeHub 维护 fork：**[chenhaoxiang/pi-lobehub](https://github.com/chenhaoxiang/pi-lobehub)，社区来源为 [LobeHub](https://github.com/lobehub/lobehub)。我方 `main` 是经评审的源码整合线。见 [fork 维护合同](docs/development/pi-fork-maintenance.md)和[本机工作入口方案](openspec/changes/adopt-pi-workspace/proposal.md)。下方保留的徽章及产品链接属于社区，不代表本 fork 已发布、CI 通过或运行验收完成。
+
 <div align="center"><a name="readme-top"></a>
 
 [![][image-banner]][vercel-link]

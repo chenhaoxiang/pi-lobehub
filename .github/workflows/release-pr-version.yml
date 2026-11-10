@@ -17,13 +17,7 @@ jobs:
   bump:
     name: Bump package.json on release PR
     runs-on: ubuntu-latest
-    if: >
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (
-        startsWith(github.event.pull_request.head.ref, 'release/') ||
-        startsWith(github.event.pull_request.head.ref, 'hotfix/') ||
-        startsWith(github.event.pull_request.title, '🚀 release:')
-      )
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event.pull_request.head.repo.full_name == github.repository && ( startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/') || startsWith(github.event.pull_request.title, '🚀 release:') )) }}
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token

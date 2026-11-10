@@ -22,7 +22,7 @@ jobs:
   test:
     name: Code quality check
     # 添加 PR label 或 release/* 分支触发：有 trigger:build-desktop 标签或 PR 源分支为 release/* 时触发
-    if: contains(github.event.pull_request.labels.*.name, 'trigger:build-desktop') || startsWith(github.event.pull_request.head.ref, 'release/')
+    if: ${{ github.repository == 'lobehub/lobehub' && (contains(github.event.pull_request.labels.*.name, 'trigger:build-desktop') || startsWith(github.event.pull_request.head.ref, 'release/')) }}
     runs-on: ubuntu-latest # 只在 ubuntu 上运行一次检查
     steps:
       - name: Checkout base
@@ -57,7 +57,7 @@ jobs:
   version:
     name: Determine version
     # 与 test job 相同的触发条件
-    if: contains(github.event.pull_request.labels.*.name, 'trigger:build-desktop') || startsWith(github.event.pull_request.head.ref, 'release/')
+    if: ${{ github.repository == 'lobehub/lobehub' && (contains(github.event.pull_request.labels.*.name, 'trigger:build-desktop') || startsWith(github.event.pull_request.head.ref, 'release/')) }}
     runs-on: ubuntu-latest
     outputs:
       # 输出版本信息，供后续 job 使用
@@ -94,6 +94,7 @@ jobs:
           echo "🚦 Release Version: ${{ steps.set_version.outputs.version }}"
 
   build:
+    if: github.repository == 'lobehub/lobehub'
     needs: [version, test]
     name: Build Desktop App
     runs-on: ${{ matrix.os }}
@@ -246,6 +247,7 @@ jobs:
 
   # ASAR 包体积门禁:与 canary 基线对比,超阈值 fail
   asar-size-gate:
+    if: github.repository == 'lobehub/lobehub'
     needs: [build]
     name: ASAR Size Gate
     runs-on: ubuntu-latest
@@ -323,6 +325,7 @@ jobs:
 
   # 合并 macOS 多架构 latest-mac.yml 文件
   merge-mac-files:
+    if: github.repository == 'lobehub/lobehub'
     needs: [build, version]
     name: Merge macOS Release Files for PR
     runs-on: ubuntu-latest
@@ -371,7 +374,7 @@ jobs:
     needs: [merge-mac-files, version]
     name: Publish PR Build
     # 只为非 fork 的 PR 发布（fork 的 PR 没有写权限）
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     # Grant write permissions for creating release and commenting on PR
     permissions:

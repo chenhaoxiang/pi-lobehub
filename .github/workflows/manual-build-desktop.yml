@@ -44,6 +44,7 @@ env:
 
 jobs:
   version:
+    if: github.repository == 'lobehub/lobehub'
     name: Determine version
     runs-on: ubuntu-latest
     outputs:
@@ -93,7 +94,7 @@ jobs:
   build-macos:
     needs: [version]
     name: Build Desktop App (macOS)
-    if: inputs.build_macos
+    if: ${{ github.repository == 'lobehub/lobehub' && (inputs.build_macos) }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -186,7 +187,7 @@ jobs:
   build-windows:
     needs: [version]
     name: Build Desktop App (Windows)
-    if: inputs.build_windows
+    if: ${{ github.repository == 'lobehub/lobehub' && (inputs.build_windows) }}
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v7
@@ -240,7 +241,7 @@ jobs:
   build-linux:
     needs: [version]
     name: Build Desktop App (Linux)
-    if: inputs.build_linux
+    if: ${{ github.repository == 'lobehub/lobehub' && (inputs.build_linux) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -295,7 +296,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: inputs.build_macos
+    if: ${{ github.repository == 'lobehub/lobehub' && (inputs.build_macos) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

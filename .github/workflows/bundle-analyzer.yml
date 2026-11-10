@@ -12,6 +12,7 @@ env:
 
 jobs:
   bundle-analyzer:
+    if: github.repository == 'lobehub/lobehub'
     name: Analyze Bundle Size
     runs-on: ubuntu-latest
 

@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.repository == 'lobehub/lobehub'
     name: Build ModelBank
     runs-on: ubuntu-latest
 
@@ -40,6 +41,7 @@ jobs:
         run: pnpm --filter model-bank build
 
   publish:
+    if: github.repository == 'lobehub/lobehub'
     name: Publish ModelBank
     needs: build
     runs-on: ubuntu-latest

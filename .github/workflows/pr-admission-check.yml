@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   check:
+    if: github.repository == 'lobehub/lobehub'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

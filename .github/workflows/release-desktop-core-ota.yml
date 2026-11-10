@@ -74,7 +74,7 @@ env:
 jobs:
   security-policy:
     name: Inspect or publish desktop security policy
-    if: github.event_name == 'workflow_dispatch' && inputs.security_policy != ''
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event_name == 'workflow_dispatch' && inputs.security_policy != '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -141,7 +141,7 @@ jobs:
 
   gate:
     name: Shell ABI gate (${{ inputs.channel }})
-    if: inputs.security_policy == ''
+    if: ${{ github.repository == 'lobehub/lobehub' && (inputs.security_policy == '') }}
     runs-on: ubuntu-latest
     outputs:
       app_version: ${{ steps.base.outputs.app_version }}
@@ -291,7 +291,7 @@ jobs:
   build-core:
     name: Build core (${{ matrix.platform }})
     needs: [gate]
-    if: needs.gate.outputs.requires_full_release == 'false'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.gate.outputs.requires_full_release == 'false') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -419,7 +419,7 @@ jobs:
   publish:
     name: Publish core (${{ inputs.channel }})
     needs: [gate, build-core]
-    if: needs.gate.outputs.requires_full_release == 'false'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.gate.outputs.requires_full_release == 'false') }}
     runs-on: ubuntu-latest
     outputs:
       published: ${{ steps.publish.outputs.published }}

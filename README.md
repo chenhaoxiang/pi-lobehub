@@ -1,3 +1,5 @@
+> **Pi LobeHub maintenance fork:** [chenhaoxiang/pi-lobehub](https://github.com/chenhaoxiang/pi-lobehub), based on [LobeHub](https://github.com/lobehub/lobehub). Our `main` is the reviewed integration branch. See the [fork maintenance contract](docs/development/pi-fork-maintenance.md) and [local workspace plan](openspec/changes/adopt-pi-workspace/proposal.md). Upstream badges and product links below describe the community project, not this fork’s release, CI or operational acceptance.
+
 <div align="center"><a name="readme-top"></a>
 
 [![][image-banner]][vercel-link]

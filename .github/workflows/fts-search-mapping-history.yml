@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     # Retargeting changes the comparison baseline; title/body edits do not.
-    if: github.event.action != 'edited' || github.event.changes.base.ref.from
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event.action != 'edited' || github.event.changes.base.ref.from) }}
     name: Verify Append-Only History
     runs-on: ubuntu-latest
     steps:

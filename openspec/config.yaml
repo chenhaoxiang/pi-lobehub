@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  Language: zh-CN
+  All artifacts must be written in zh-CN.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+  Owner: chenhaoxiang/pi-lobehub. Our main is the integration branch;
+  upstream/canary and upstream/main are community inputs, not our release channels.
+  The user has authorised batch 1 (maintenance, safe CI and isolated local setup)
+  and batch 2 (Pi compatibility and structured questions). Later task/Desk
+  migration remains planned; no production deployment or publication.
+  Plans and validated artifacts alone do not authorise model spending.
+  Reuse this repository's single adopt-pi-workspace change for its scoped work;
+  keep implementation evidence distinct from planning progress.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

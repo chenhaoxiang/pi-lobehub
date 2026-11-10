@@ -20,6 +20,7 @@ env:
 
 jobs:
   build-core:
+    if: github.repository == 'lobehub/lobehub'
     name: Build core (darwin)
     runs-on: ubuntu-latest
     steps:
