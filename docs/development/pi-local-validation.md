@@ -5,7 +5,7 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-verified: 2026-11-10
+verified: 2026-11-11
 verification_scope: Isolated Apple-silicon macOS authenticated Web/backend/CLI fixture, DB migration, local S3/queue/gateway health, device offline/reconnect and original native question single/multi callbacks; no production or business-model turn
 ---
 
