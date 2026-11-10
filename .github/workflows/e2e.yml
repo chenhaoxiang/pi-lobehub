@@ -58,6 +58,7 @@ env:
 
 jobs:
   e2e:
+    if: github.repository == 'lobehub/lobehub'
     name: Test Web App
     runs-on: ubuntu-latest
     services:

@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   stale:
+    if: github.repository == 'lobehub/lobehub'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

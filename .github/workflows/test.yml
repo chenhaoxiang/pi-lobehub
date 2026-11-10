@@ -42,6 +42,7 @@ concurrency:
 jobs:
   # Package tests - all packages in single job to save runner resources
   test-packages:
+    if: github.repository == 'lobehub/lobehub'
     runs-on: ubuntu-latest
     name: Test Packages
     env:
@@ -193,6 +194,7 @@ jobs:
 
   # App tests - run sharded tests
   test-app:
+    if: github.repository == 'lobehub/lobehub'
     strategy:
       matrix:
         shard: [1, 2, 3]
@@ -236,6 +238,7 @@ jobs:
   # detection cascade against real install paths. The driver script only needs
   # node builtins, so this job skips the monorepo install entirely.
   test-windows-shell:
+    if: github.repository == 'lobehub/lobehub'
     name: Test Windows Shell
 
     runs-on: windows-latest
@@ -253,6 +256,7 @@ jobs:
         run: bun run packages/local-file-shell/scripts/verify-windows-shell.ts
 
   test-desktop:
+    if: github.repository == 'lobehub/lobehub'
     name: ALint & Test Desktop App
 
     runs-on: ubuntu-latest
@@ -390,6 +394,7 @@ jobs:
   # same commit cut its slowest shard from 17-19 to 12-13 min; a 4th shard would only
   # wait on Test App instead.
   test-server:
+    if: github.repository == 'lobehub/lobehub'
     strategy:
       matrix:
         shard: [1, 2, 3]
@@ -433,7 +438,7 @@ jobs:
   upload-sharded-coverage:
     name: Upload Sharded Coverage
     needs: [test-app, test-server]
-    if: ${{ !cancelled() }}
+    if: ${{ github.repository == 'lobehub/lobehub' && (!cancelled()) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -481,6 +486,7 @@ jobs:
           name: server
 
   test-databsae:
+    if: github.repository == 'lobehub/lobehub'
     name: Test Database
 
     runs-on: ubuntu-latest

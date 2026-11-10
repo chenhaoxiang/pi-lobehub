@@ -16,6 +16,7 @@ env:
 
 jobs:
   build:
+    if: github.repository == 'lobehub/lobehub'
     strategy:
       matrix:
         include:
@@ -87,6 +88,7 @@ jobs:
           retention-days: 1
 
   merge:
+    if: github.repository == 'lobehub/lobehub'
     name: Merge
     needs: build
     runs-on: ubuntu-latest

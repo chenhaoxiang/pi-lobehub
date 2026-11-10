@@ -13,7 +13,7 @@ jobs:
   auto-tag:
     name: Auto Tag Release
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event.pull_request.merged == true) }}
 
     steps:
       - uses: actions/create-github-app-token@v2

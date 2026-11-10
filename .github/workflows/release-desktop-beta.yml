@@ -28,6 +28,7 @@ jobs:
   # 检查是否为 Beta 版本 (排除 Stable 和 Nightly)
   # ============================================
   check-beta:
+    if: github.repository == 'lobehub/lobehub'
     name: Check if Beta Release
     runs-on: ubuntu-latest
     outputs:
@@ -94,7 +95,7 @@ jobs:
   test:
     name: Code quality check
     needs: [check-beta]
-    if: needs.check-beta.outputs.is_beta == 'true'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.check-beta.outputs.is_beta == 'true') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout base
@@ -113,7 +114,7 @@ jobs:
 
   build:
     needs: [check-beta]
-    if: needs.check-beta.outputs.is_beta == 'true'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.check-beta.outputs.is_beta == 'true') }}
     name: Build Desktop App
     runs-on: ${{ matrix.os }}
     strategy:
@@ -238,7 +239,7 @@ jobs:
   # 汇总门禁: test/build 完成后决定是否继续
   gate:
     needs: [check-beta, test, build]
-    if: ${{ needs.check-beta.outputs.is_beta == 'true' && needs.test.result == 'success' && needs.build.result == 'success' }}
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.check-beta.outputs.is_beta == 'true' && needs.test.result == 'success' && needs.build.result == 'success') }}
     name: Gate for publish
     runs-on: ubuntu-latest
     steps:
@@ -247,6 +248,7 @@ jobs:
 
   # 合并 macOS 多架构 latest-mac.yml 文件
   merge-mac-files:
+    if: github.repository == 'lobehub/lobehub'
     needs: [gate]
     name: Merge macOS Release Files
     runs-on: ubuntu-latest
@@ -295,6 +297,7 @@ jobs:
 
   # 发布所有平台构建产物
   publish-release:
+    if: github.repository == 'lobehub/lobehub'
     needs: [merge-mac-files]
     name: Publish Beta Release
     runs-on: ubuntu-latest
@@ -337,6 +340,7 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
 
   publish-core-base:
+    if: github.repository == 'lobehub/lobehub'
     needs: [check-beta, merge-mac-files]
     name: Publish Beta Shell and Core r0
     runs-on: ubuntu-latest

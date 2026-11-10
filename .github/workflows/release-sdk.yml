@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.repository == 'lobehub/lobehub'
     name: Publish SDK
     runs-on: ubuntu-latest
 

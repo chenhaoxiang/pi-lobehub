@@ -14,7 +14,7 @@ jobs:
   sync_latest_from_upstream:
     name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
+    if: ${{ github.repository == 'lobehub/lobehub' && (github.event.repository.fork) }}
 
     steps:
       - uses: actions/checkout@v7

@@ -12,6 +12,7 @@ on:
 
 jobs:
   revalidate:
+    if: github.repository == 'lobehub/lobehub'
     name: Revalidate Docs
     runs-on: ubuntu-latest
     steps:

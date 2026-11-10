@@ -105,6 +105,7 @@ jobs:
   # 检查版本信息
   # ============================================
   check-stable:
+    if: github.repository == 'lobehub/lobehub'
     name: Check Release Version
     runs-on: ubuntu-latest
     permissions:
@@ -222,7 +223,7 @@ jobs:
   # ============================================
   configure-build:
     needs: [check-stable]
-    if: needs.check-stable.outputs.build_required == 'true'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.check-stable.outputs.build_required == 'true') }}
     name: Configure Build Matrix
     runs-on: ubuntu-latest
     outputs:
@@ -272,7 +273,7 @@ jobs:
   # ============================================
   build:
     needs: [check-stable, configure-build]
-    if: needs.check-stable.outputs.build_required == 'true'
+    if: ${{ github.repository == 'lobehub/lobehub' && (needs.check-stable.outputs.build_required == 'true') }}
     name: Build Desktop App
     runs-on: ${{ matrix.os }}
     strategy:
@@ -442,6 +443,7 @@ jobs:
   # 合并 macOS 多架构文件
   # ============================================
   merge-mac-files:
+    if: github.repository == 'lobehub/lobehub'
     needs: [build, check-stable, configure-build]
     name: Merge macOS Release Files
     runs-on: ubuntu-latest
@@ -494,7 +496,7 @@ jobs:
     name: Publish to GitHub Release
     runs-on: ubuntu-latest
     # 手动触发时可选择跳过
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_github_release) }}
+    if: ${{ github.repository == 'lobehub/lobehub' && (!(github.event_name == 'workflow_dispatch' && inputs.skip_github_release)) }}
     permissions:
       contents: write
     steps:
@@ -544,7 +546,7 @@ jobs:
       core_published: ${{ steps.publish.outputs.core-published }}
       installers_published: ${{ steps.publish.outputs.installers-published }}
     # 手动触发时可选择跳过
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_s3_upload) }}
+    if: ${{ github.repository == 'lobehub/lobehub' && (!(github.event_name == 'workflow_dispatch' && inputs.skip_s3_upload)) }}
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token
@@ -569,6 +571,7 @@ jobs:
           s3-endpoint: ${{ secrets.UPDATE_S3_ENDPOINT }}
 
   publish-sparkle:
+    if: github.repository == 'lobehub/lobehub'
     needs: [publish-s3, check-stable]
     name: Publish Sparkle Appcast
     runs-on: macos-15
@@ -599,7 +602,7 @@ jobs:
   record-delivery:
     name: Record successful desktop delivery
     needs: [check-stable, configure-build, build, publish-github, publish-s3, publish-sparkle]
-    if: always() && needs.check-stable.outputs.build_required == 'true'
+    if: ${{ github.repository == 'lobehub/lobehub' && (always() && needs.check-stable.outputs.build_required == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,6 +1,30 @@
-# LobeHub Development Guidelines
+# Pi LobeHub Development Guidelines
 
-Guidelines for using AI coding agents in this opensource LobeHub repository.
+This is `chenhaoxiang/pi-lobehub`, a maintained fork of `lobehub/lobehub`.
+Our `main` is the source integration branch; upstream development and release
+branches are read-only inputs, not this fork's deployment or installation channels.
+
+## Fork planning entry
+
+- Current product direction and scope: [proposal](openspec/changes/adopt-pi-workspace/proposal.md).
+- Architecture, runtime choice and Desk capability disposition: [design](openspec/changes/adopt-pi-workspace/design.md).
+- Dependency-ordered implementation and verification: [tasks](openspec/changes/adopt-pi-workspace/tasks.md).
+- Fork sources, workflow isolation and validation bootstrap: [maintenance](docs/development/pi-fork-maintenance.md).
+- The user has authorised implementation and normal PR delivery of batch 1
+  (fork maintenance, safe CI and isolated local environment) and batch 2
+  (maintained Pi compatibility, structured questions and scoped control).
+  Follow the existing Change; later task/Desk migration remains planned.
+  Do not publish, deploy production, remove Desk or force-reload live Pi.
+  Real-model verification needs the actual authorised test configuration and
+  spending scope; provider-free checks never borrow production credentials.
+- Use dedicated worktrees for tracked changes; keep the physical main checkout
+  read-only. Preserve live Pi sessions and other writers' work.
+- Inherited Actions remain paused until their validation/release/production effects
+  are audited and adapted. Do not enable upstream automation just to get a green
+  check. Do not use the upstream production development proxy for local validation.
+
+The technical guidance below is inherited from LobeHub; the fork identity,
+branch and scope rules here take precedence for this repository.
 
 ## Tech Stack
 
@@ -61,9 +85,10 @@ This proxy is a **development convenience, not a verification surface**: it runs
 
 ### Git Workflow
 
-- **Branch strategy**: `canary` is the development branch (cloud production); `main` is the release branch (periodically cherry-picks from canary)
-- New branches should be created from `canary`; PRs should target `canary`
-- Use rebase for `git pull`
+- **Fork branch strategy**: our `main` is the maintained integration branch, not an automatic release or deployment trigger.
+- New worktrees/branches start from freshly verified `origin/main`; PRs target our `main`. Changes enter through reviewed PRs and regular merges, never direct or force pushes.
+- `upstream/canary` is the community development input; `upstream/main` is the community release input. Review and test selected updates before integrating; do not replace fork history with either input or use one-click Sync Fork.
+- Preserve shared history and dirty work. Refresh with explicit fetch/merge or verified fast-forward where applicable; do not rebase the physical main checkout.
 - Commit messages: prefix with gitmoji
 - Branch format: `<type>/<feature-name>`
 

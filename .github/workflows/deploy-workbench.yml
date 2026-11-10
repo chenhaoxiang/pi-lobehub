@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.repository == 'lobehub/lobehub'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

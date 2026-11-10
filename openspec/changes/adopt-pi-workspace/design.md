@@ -1,0 +1,147 @@
+---
+doc_type: plan
+project: workspace
+owner_repository: chenhaoxiang/pi-lobehub
+status: active
+truth_mode: maintained
+created: 2026-11-10
+release_scope: 全本机验证版；第一批与第二批已授权实施
+---
+
+# Design
+
+## Context
+
+动机和本轮授权见 [proposal](proposal.md)。本页是该 Change 唯一的方案正文，不另造业务任务、审批或经营数据库。
+
+### 已核查的设计输入
+
+| 事实 | 当前来源 | 对方案的影响 |
+| --- | --- | --- |
+| fork 默认 `main`，来源为上游 `canary`；Actions 暂停 | Git/GitHub 回读；基线 `01665ddf425ff824b554993115e969c51bd1f4c5` | 不把上游 `main` 发布线和我方 `main` 混为一谈；CI 和发布分开适配 |
+| Pi 版本检查拒绝 `-fork.N` | `packages/heterogeneous-agents/src/rpc/piRpcClient.ts` | 修版本/能力识别并保留原身份，不伪装成社区版本 |
+| RPC 有 select/input 等传输，但宿主未接 UI handler | 同文件与 `piRpcAgentHandle.ts`、`HeterogeneousAgentImpl.ts` | 必须完成请求与答案的端到端接线 |
+| `rpiv-ask-user-question` 显式要求 `ctx.mode === "tui"` 且使用 `ui.custom`；Pi RPC 不支持 custom UI | 原扩展 `ask-user-question.ts` 与 Pi `modes/rpc/rpc-mode.ts` | 仅补 handler 不够；原扩展需要保留 TUI 行为的 RPC 交互路径 |
+| 托管 Provider 会设置专用 agent 配置根 | `apps/desktop/src/main/modules/heterogeneousAgent/drivers/pi.ts` | 首版优先沿原 CLI 配置，不能默认宣称所有绑定模式都继承插件 |
+| 普通 Task 的 delivered 可以伴随失败检查；Goal 任务失败走恢复；周期 tick 默认跳过 Verify | `services/verify/settle.ts`、`planInstantiation.ts` 及其测试 | 必须分开业务、运行、检查和接受，不全面重写上游状态机 |
+| local 调度是进程内 timer，公开 business 层有空实现 | `services/queue/impls/local.ts`、Goal scheduler、`packages/business-server/src/task/` | 首版如实呈现限制，不宣称持久调度或云端功能齐全 |
+| Desk 是 SwiftUI/AppKit + TS bridge，本地用量索引独立于业务任务 | Desk `docs/architecture.md`、bridge 与 UsageLedger | 迁移语义和必要逻辑，不全量搬 UI、不把图表重画当数据迁移 |
+
+上述源码定位相对本仓 `apps/server/src/` 的 services 路径按实际目录阅读；外部 owner 路径不是本仓已修改事实。后续开工刷新精确 head，只补受变化影响的核验，不重做无关调研。
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- 用两个低风险、完整工作样本证明：任务能派给负责人，经 Pi 执行、真实提问、等待/纠偏、检查与交付，在同一工作入口跟踪。
+- 关闭 Web 页面不停止仍由本机后端/CLI 持有的工作；停止、断联和异常不伪装成业务完成。
+- 兼容差异尽量停留在已有执行端和消费者边界；共用问题可回馈上游，不用自建平台绕开兼容问题。
+- 将 Desk 的有用能力按职责落位，并形成能安全停止独立客户端的迁移依据。
+
+**Non-Goals:**
+
+- 不做生产或官方云接入、长期无人值守、跨机器迁移、服务端重启后自动恢复承诺、正式安装发行或商业分发。
+- 不重写 LobeHub Goal/Task/Acceptance、不建第二套 Router/任务库/调度器，不让双方对同一业务状态双写。
+- 不全量复制 Desk 的界面、原生特效、设置和 AI 助手；不导入历史聊天、思考、工具原文或真实凭据。
+- 不接管正在运行的旧 TUI，不把 `--session-id` 存在当作准确恢复证明；不默认升级/重启其他 Pi 会话。
+
+## Decisions
+
+### 1. 本机 Web 入口与独立设备执行端先行
+
+首条验证路线是本机隔离后端 + 本机 Web UI + 经 `lh connect` 接入的独立本机 CLI 设备，Pi 仍用维护发行版。选择它是为了先验证业务闭环并分开页面与执行生命周期，避免把 Electron 打包、签名和桌面生命周期改造变成首个前置。
+
+```text
+用户 → 本机 LobeHub Web → 本机后端 / Goal / Task / Acceptance
+                              │
+                         既有设备通道
+                              │
+                      独立本机 CLI 执行端 → 维护 Pi
+                                              ├─ Todo / Subagents 等所需扩展
+                                              └─ 原项目规则 / worktree / Gate / CI
+```
+
+测试服务的数据库、Redis、对象存储、Gateway 使用已有本地开发配置的必要组件，数据与端口隔离；不开生产开发代理，不用 `app.lobehub.com/_dangerous_local_dev_proxy` 代替本机后端。确切端口由本地环境解析，启动前检查占用，不抢占共享服务。
+
+本机进程内 timer 足以验证“进程存活期间”的流程；后端/设备进程退出后，首先对账为未知、失败或可恢复，不能以自动另起任务假装接续。持久队列、正式部署和 Electron 客户端是后续独立范围，不阻塞本机验证版如实交付。
+
+### 2. 权威按事实域分层
+
+| 事实/动作 | 权威 | 其他层的职责 |
+| --- | --- | --- |
+| Goal、业务 Task、指派、用户反馈 | LobeHub 现有记录 | Pi 接收准确任务上下文，不创建其竞争副本 |
+| 原生执行计划与某次 Run 的状态、停止/恢复资格 | Pi / 原扩展 / 实际执行端 | LobeHub 展示带来源结果，发定向请求 |
+| 文件/分支/命令、账号及真实副作用的许可 | 当前授权、原规则和平台权限 | 指派或页面按钮不能升权 |
+| 测试、Gate、CI、合并与部署事实 | 原工程 owner 和原件 | LobeHub 关联/展示，不重复验收或以模型自报覆盖 |
+| 检查结论、交付与接受/退回 | 对应 Acceptance / Goal 规则与有权用户 | 不将 completed/passed/delivered/accepted 合并 |
+| 历史记忆和已知经验 | 现有 Hindsight/原 owner | 首版不迁移记忆，也不让记忆成为当前授权 |
+
+已有 Desk 的“Pi 同源工作观察”合同不会被默默当作新产品的业务主档。业务任务归属调整在本 Change 明示；原执行与治理的权威不随 UI 迁移而转让。
+
+### 3. 在现有适配层绑定身份，不另造协议平台
+
+沿既有 Task、Operation、设备、原生 session/run 和 request 身份关联；已存在字段复用，确实缺的关联才在相应 owner 的现有模型中补最小字段。字段缺失保留未关联/未知，不按 cwd、名字、时间接近或 Todo 数量猜测归属。
+
+同一业务任务可以有多次执行，但旧 attempt 的迟到结果不能推进新 attempt。外部请求未确认入副作用阶段与已经进入后结果未知必须区分；不自动重放未知控制请求。LobeHub 负责任务级组织，Pi 内部 Todo/Subagents 只组织自己的执行步骤；同一层的重试/定时触发只有一个负责人。
+
+### 4. Pi 配置与结构化提问是首批硬交付
+
+首版使用 CLI 原配置模式，显式核对 provider/model、思考档、所需工具/扩展与项目规则；托管 profile 先标未支持或未验证，不偷复制 `auth.json`、profile、token 或导出 state。版本识别接受经过能力核验的维护版本，不放宽到任意字符串。
+
+提问分两部分实现：LobeHub 的 Pi 宿主转发公开 RPC UI 请求/响应；原 `rpiv-ask-user-question` owner 增加 RPC 路径，保留现有 TUI/custom UI 和 ToolResult 语义。RPC 路径复用公开选择/文本交互或受支持的等价交互，不向 RPC 发送 TUI 组件函数。
+
+验收覆盖单选、多选、自定义文本、Chat、取消、abort、断联及过期答案。取消不是批准，UI 不可用不是选择了第一项；原问题与任务身份、一次回答及晚到拒绝需要贯通。若公开 API 仍有实际缺口，在原 owner 做最小补齐与回归，不在平台悄悄换一个同名工具。
+
+### 5. 保留上游验收语义，增强可读性
+
+普通 Task 可以“已交付、检查未过、待用户接受”；Goal 内失败由原协调器处理；周期 tick 不因显示为完成就声称通过同样检查。UI 分别显示运行、检查、交付/接受；工程场景明确检查到的 head 与原验收，不将一次执行结束视为 PR/CI/安装成功。
+
+不引入全平台强制 LLM judge 或重复复审。上游已经完成的有效检查复用；仅补缺失/过期项。验收、计划、handoff 等额外模型调用计入观察，不假定 Pi 订阅覆盖平台侧成本。
+
+### 6. Desk 只迁必要能力
+
+| 能力 | 首版处理 |
+| --- | --- |
+| 工作阶段、阻塞、下一步 | 融入已有 Task/Goal 详情；原 owner 缺事实则未知 |
+| 真实输入等待、需关注事项 | 接准确问题生命周期；不把 CI 等待/未读/暂停都升级为用户问题 |
+| 连接与执行分离、requested/accepted/unknown | 作为 Pi 适配与详情的正确性，不复制新工作台 |
+| 基本 Token 用量 | 使用已授权取得的当前运行数据；四桶去重、来源和覆盖明确，不等同账单 |
+| Gate/CI 摘要 | 沿 Vista/原工程 owner 已有有界读口；不扫描私有审计正文 |
+| 全历史用量库迁移 | 首版不自动迁移；先保全旧库，确有后续需要再作精确迁移 |
+| SwiftUI、刘海/菜单栏特效、重复设置/AI 助手 | 不迁移；不为保留沉没成本制造新模块 |
+
+TS bridge 的身份、限流、去重逻辑和测试可以参考或按许可选择性复用，但不能原样将本机 UDS/private DTO 暴露为公共网络协议。不预先拆出一批独立仓/通用 SDK；优先使用已有模块。
+
+### 7. 小范围跟随上游
+
+我方 `main` 为维护整合线；`upstream/canary` 是上游开发基线，`upstream/main` 是上游发布线。刷新远端不等于合入；每轮同步锁定来源与差异，经适用测试和 PR 后整合，不做一键 Sync Fork。
+
+优先改 Pi 集成、明确的缺失接线和必要消费者。必须改 Goal/Task/Acceptance 核心时，先说明真实缺口与维护代价，不用“迁移 Desk”无限扩大差异。保留来源、许可证和旧发布资产；不沿用上游发布账号、社区 npm 身份或云端部署目标。
+
+## Risks / Trade-offs
+
+- **RPC 问答比一个回调更深** → 原扩展和两端协议一起验证；未解决不标全兼容。
+- **纯本机执行仍依赖后端/设备进程** → 显示具体存活范围；页面关闭与进程退出分别验证，不承诺全天候。
+- **公开版 business slot 与云端不同** → 只对验证所需的具体通知/回传补齐，不声称克隆即有云端全部能力。
+- **Task completed 与工程交付语义不同** → 保留源状态并分域展示，不修改所有上游 completed 的含义。
+- **后台加载旧/错 profile 或新建同 ID session** → 核对真实配置、原生身份和上下文；未恢复不得叫恢复。
+- **平台事件可能包含正文/推理/工具内容** → 首版仅合成/测试输入在本机验证；旧业务记录不导入；后续真实数据范围明确后才接入。
+- **没有同任务收益数据** → 两类样本记录催促、重复说明、返工、重复执行及已知用量；一次成功不宣称普遍 ROI。
+- **LICENSE 与 package 字段不同** → 保留 LICENSE 原件和来源；内部验证不等于商业衍生分发许可，正式分发再核适用条件。
+
+## Migration Plan
+
+详见 [tasks](tasks.md)。依赖顺序为：维护/CI 与本机准备 → Pi 兼容 → 任务闭环 → 必要消费者 → 端到端样本 → 受控退出。每组包含自己的测试和文档，不把所有验证拖到最后。
+
+Desk 独立产品停止扩张的方向已确定；本轮第一批只由原 owner 记录方向并保全在途成果，不卸载 App。运行退出后置到替代范围验证、数据保全和回退路径明确之后。只处理本工具拥有的 App/入口，不清理旧会话、Hindsight、全局模型设置或无关扩展，不 force reload。
+
+回退以本次验证候选为界：停止新入口后不重放未确认请求，保留 LobeHub 本机测试数据与原件；恢复旧入口前确认没有并发控制同一运行。历史用量库原件保留，UI 回退不覆盖后续产生的记录。
+
+## Open Questions
+
+以下只影响执行参数或以后范围，不改变已选择的本机验证架构：
+
+- 使用哪组当前已授权的测试模型、账号与一次验证费用上限；任何真实调用前核对，不猜填、不默认零成本。
+- 本机开发服务具体空闲端口、隔离数据路径和候选 App 名称，由实际环境检查决定。
+- 工程小任务与公开资料报告的具体题目，复用当时已授权目标；不拿生产操作作演示。
+- 正式部署、长期持久队列、Electron 安装发布及历史用量迁移是以后范围，不是本 Change 的隐形前置。

@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   validate:
+    if: github.repository == 'lobehub/lobehub'
     name: Validate desktop release baseline
     runs-on: ubuntu-latest
     timeout-minutes: 5
