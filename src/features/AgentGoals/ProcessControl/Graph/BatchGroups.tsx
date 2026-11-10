@@ -49,9 +49,9 @@ import {
   type BatchCellState,
   type BatchProbe,
   type BatchUnitOrigin,
-  batchUnitsState,
   countCells,
   reopenedRows,
+  unitsPhase,
 } from './batchModel';
 
 /**
@@ -503,22 +503,40 @@ const useUnitsStatus = () => {
   return (
     cells: { state: BatchCellState }[],
     copy: { done: string; pending: string; running: string },
+    started: boolean,
+    held = false,
   ): GroupStatus => {
     const counts = countCells(cells);
-    const state = batchUnitsState(cells);
-    if (state === 'unknown' || state === 'waiting')
-      return { ...CELL_VISUAL[state], text: t(`goalBatch.cell.${state}`) };
-    if (state === 'human')
-      return { ...CELL_VISUAL.human, text: t('goalBatch.status.human', { count: counts.human }) };
-    if (state === 'stale')
-      return {
-        color: cssVar.colorWarning,
-        icon: CircleSlash,
-        text: t('goalBatch.status.stale', { count: counts.stale }),
-      };
-    if (state === 'done') return { ...CELL_VISUAL.done, text: copy.done };
-    if (state === 'backlog') return { ...CELL_VISUAL.backlog, text: copy.pending };
-    return { ...CELL_VISUAL.running, running: true, text: copy.running };
+    const phase = unitsPhase(cells, started, held);
+    switch (phase) {
+      case 'unknown':
+      case 'waiting': {
+        return { ...CELL_VISUAL[phase], text: t(`goalBatch.cell.${phase}`) };
+      }
+      case 'human': {
+        return { ...CELL_VISUAL.human, text: t('goalBatch.status.human', { count: counts.human }) };
+      }
+      case 'stale': {
+        return {
+          color: cssVar.colorWarning,
+          icon: CircleSlash,
+          text: t('goalBatch.status.stale', { count: counts.stale }),
+        };
+      }
+      case 'held': {
+        return { ...CELL_VISUAL.human, text: t('goalBatch.status.held') };
+      }
+      case 'done': {
+        return { ...CELL_VISUAL.done, text: copy.done };
+      }
+      case 'pending':
+      case 'backlog': {
+        return { ...CELL_VISUAL.backlog, text: copy.pending };
+      }
+      default: {
+        return { ...CELL_VISUAL.running, running: true, text: copy.running };
+      }
+    }
   };
 };
 
@@ -626,7 +644,7 @@ const ProbeCell = memo<{ onSelect: (id: string) => void; probe: BatchProbe; view
 ProbeCell.displayName = 'GoalBatchProbeCell';
 
 export const BatchExperimentProbeGroup = memo<NodeProps>(({ data }) => {
-  const { onEnter, onSelect, probes: latest, views } = data as BatchExperimentProbeData;
+  const { onEnter, onSelect, probes: latest, started, views } = data as BatchExperimentProbeData;
   const { t } = useTranslation('chat');
   // Trials sent back and run again in the round: one switch in the head picks
   // which run the cards show, the latest unless the reader goes back.
@@ -640,11 +658,15 @@ export const BatchExperimentProbeGroup = memo<NodeProps>(({ data }) => {
           const run = probe.runs?.[attempt - 1];
           return run ? { ...probe, ...run } : probe;
         });
-  const status = useUnitsStatus()(probes, {
-    done: t('goalBatch.probes.status.done'),
-    pending: t('goalBatch.probes.status.pending'),
-    running: t('goalBatch.probes.status.running'),
-  });
+  const status = useUnitsStatus()(
+    probes,
+    {
+      done: t('goalBatch.probes.status.done'),
+      pending: t('goalBatch.probes.status.pending'),
+      running: t('goalBatch.probes.status.running'),
+    },
+    started,
+  );
   return (
     <GroupShell
       hint={t('goalBatch.probes.hint', { count: probes.length })}
@@ -821,6 +843,8 @@ const useOriginCopy = () => {
 };
 
 export interface BatchWavesData extends Record<string, unknown> {
+  /** The round's gate is holding the next wave for a person's release. */
+  held?: boolean;
   /** Open the batch on its own, the way a person reviews one batch at a time. */
   onEnter: () => void;
   onSelect: (nodeId: string) => void;
@@ -837,7 +861,8 @@ export interface BatchWavesData extends Record<string, unknown> {
 
 /** A round's waves: the units it re-opened, then the roster waves it owns. */
 export const BatchWavesGroup = memo<NodeProps>(({ data }) => {
-  const { onEnter, onSelect, probes, retros, revision, rows, waveSize } = data as BatchWavesData;
+  const { held, onEnter, onSelect, probes, retros, revision, rows, started, waveSize } =
+    data as BatchWavesData;
   const { t } = useTranslation('chat');
   const label = useCellLabel();
   const originCopy = useOriginCopy();
@@ -851,11 +876,16 @@ export const BatchWavesGroup = memo<NodeProps>(({ data }) => {
           : t('goalBatch.redispatch.reopenedRow');
   const reopened = revision > 1 ? reopenedRows(probes, waveSize) : [];
   const cells = [...(revision > 1 ? probes : []), ...rows.flatMap((row) => row.cells)];
-  const status = useUnitsStatus()(cells, {
-    done: t('goalBatch.status.done'),
-    pending: t('goalBatch.status.pending'),
-    running: t('goalBatch.status.running'),
-  });
+  const status = useUnitsStatus()(
+    cells,
+    {
+      done: t('goalBatch.status.done'),
+      pending: t('goalBatch.status.pending'),
+      running: t('goalBatch.status.running'),
+    },
+    started,
+    held,
+  );
   return (
     <GroupShell
       hint={<SquareLegend />}
