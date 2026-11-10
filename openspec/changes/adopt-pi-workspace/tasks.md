@@ -31,7 +31,7 @@ release_scope: 第一批P0/P1与第二批P2实施中；P3–P6保留为后续范
 - [x] 1.1 完善 fork owner 入口和维护说明，明确我方 main、上游 canary/main、只读 upstream 和同步方式；验收为仓内入口无“PR 应投我方 canary”的冲突，来源和许可证保持可追溯。
 - [x] 1.2 审计继承工作流的发布、部署、自动同步、付费/真实模型行为，建立最小验证集合并补仓库/事件隔离；验收为 fork 验证事件不会进入上游发布/生产目标，未适配流程保持关闭。
 - [x] 1.3 以实际验证结果恢复必要 CI，并将确实存在的检查绑定 main 保护；验收为准确 head 的真实检查通过、发布仍不触发，不凭推测写入 required context。
-- [ ] 1.4 由 Desk 原 owner 记录停止独立产品扩张和待迁能力，协调在途 writer/PR；验收为原仓职责明确、既有成果保全，没有因方向变更擅自丢弃或终止他人工作。
+- [x] 1.4 由 Desk 原 owner 记录停止独立产品扩张和待迁能力，协调在途 writer/PR；验收为原仓职责明确、既有成果保全，没有因方向变更擅自丢弃或终止他人工作。
 
 ## 2. P1：可复现的全本机环境
 
@@ -53,7 +53,7 @@ release_scope: 第一批P0/P1与第二批P2实施中；P3–P6保留为后续范
 
 ### 本轮实现与证据（2026-11-11）
 
-- P0.1–3 已经 [PR1](https://github.com/chenhaoxiang/pi-lobehub/pull/1) 合入 `f29467e`，实际 fork-contract 已绿并绑定 main；31个继承工作流保持关闭。Desk方向记录另由原 owner 的 [PR25](https://github.com/chenhaoxiang/pi-desk/pull/25) 交付，未合前1.4保持未勾选。
+- P0.1–3 已经 [PR1](https://github.com/chenhaoxiang/pi-lobehub/pull/1) 合入 `f29467e`，实际 fork-contract 已绿并绑定 main；31个继承工作流保持关闭。Desk方向记录由原 owner 的 [PR25](https://github.com/chenhaoxiang/pi-desk/pull/25) 独审及 bridge/native CI 后普通合入 `bd36b07`，只改方向文档，无卸载/清理或在途停止。
 - P1 本机依赖、合成 DB 迁移/S3/Redis/QStash/Gateway、loopback Web、独立 CLI home 及 online→offline→online已实际验证；启动/停止/保全入口见 [本机运行说明](../../../docs/development/pi-local-validation.md)。已勾选项表示该实现/本机验真满足，P1正常 PR/CI/独审/合并仍按交付记录分别核对，不由本表推导共享完成。
 - P2 已经 [PR2](https://github.com/chenhaoxiang/pi-lobehub/pull/2) 独审/CI后普通合入 `ab8b164`；原问题工具由 [owner PR17](https://github.com/chenhaoxiang/rpiv-ask-user-question/pull/17) 合入 `573d875`，不在 LobeHub 注册同名替代工具。原独审两项major、两个minor均已修，原BLOCK/CI失败与窄复审均保留；最终CI126/126、owningRPC/状态归约161/161，源与新增测试类型通过。真实Pi1.5.0-fork.4有界问答延迟31秒后正常回执；同一localhost已登录页面单选和逆序多选回到原工具，provider请求0。
 - 3.6只核实原生Pi RPC及原准确运行的busy/停止/接续/未知不重放；Claude特有的实时steer队列未接为Pi UI能力，未冒称支持，详情见 [兼容矩阵](../../../docs/development/pi-runtime-compatibility.md)。原CLI standalone类型检查的97个诊断签名与main基线相同，未写成全绿；根owner类型检查已通过。

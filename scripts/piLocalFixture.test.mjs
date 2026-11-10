@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -60,6 +61,24 @@ test('refuses a symlinked private directory without touching the foreign target'
     symlinkSync(foreign, path.join(dir, 'keys-local'));
     assert.notEqual(run(dir, 'prepare').status, 0);
     assert.equal(readFileSync(path.join(foreign, 'preserve'), 'utf8'), 'unchanged');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('preserves public configuration when source.env is missing, including repeated attempts', () => {
+  const dir = fixture();
+  try {
+    const privateDir = path.join(dir, 'keys-local/pi-local-validation');
+    mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+    for (const file of ['public-jwks.json', 'gateway.env'])
+      writeFileSync(path.join(privateDir, file), `preserve-${file}`, { mode: 0o600 });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      assert.notEqual(run(dir, 'prepare').status, 0);
+      assert.equal(existsSync(path.join(privateDir, 'source.env')), false);
+      for (const file of ['public-jwks.json', 'gateway.env'])
+        assert.equal(readFileSync(path.join(privateDir, file), 'utf8'), `preserve-${file}`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

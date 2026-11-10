@@ -26,8 +26,9 @@ safeDirectory(path.join(root, 'tmp'));
 safeDirectory(path.join(root, 'tmp/pi-local'));
 
 if (process.argv[2] === 'prepare') {
-  if (existsSync(envFile)) {
-    for (const file of ['source.env', 'public-jwks.json', 'gateway.env']) {
+  const files = ['source.env', 'public-jwks.json', 'gateway.env'];
+  if (files.some((file) => lstatSync(path.join(directory, file), { throwIfNoEntry: false }))) {
+    for (const file of files) {
       const candidate = path.join(directory, file);
       if (
         !existsSync(candidate) ||
