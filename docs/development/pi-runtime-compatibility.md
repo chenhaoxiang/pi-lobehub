@@ -100,7 +100,7 @@ sanitization tests. It does not install the whole application or validate all of
 its packages:
 
 ```sh
-npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0 vitest@5.0.0 debug@4.4.3 react@19.2.7 react-dom@19.2.7 @testing-library/react@16.3.3 @testing-library/dom@10.4.2 happy-dom@20.11.15
+npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0 vitest@5.0.0 debug@4.4.3 react@19.2.7 react-dom@19.2.7 @testing-library/react@16.3.3 @testing-library/dom@10.4.2 happy-dom@20.11.15 es-toolkit@1.50.0
 node tmp/fork-ci-tools/node_modules/vitest/vitest.mjs run --config .github/scripts/piRpcChecks.config.mjs
 ```
 
