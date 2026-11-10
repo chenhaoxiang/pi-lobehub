@@ -11,6 +11,8 @@ export default {
     alias: [
       { find: /^vitest$/, replacement: path.join(tools, 'vitest/dist/index.js') },
       { find: /^debug$/, replacement: path.join(tools, 'debug/src/index.js') },
+      { find: 'es-toolkit', replacement: path.join(tools, 'es-toolkit') },
+      { find: '@lobechat/utils/object', replacement: path.join(root, 'packages/utils/src/object.ts') },
       { find: 'react-dom', replacement: path.join(tools, 'react-dom') },
       { find: 'react', replacement: path.join(tools, 'react') },
       {
@@ -35,6 +37,7 @@ export default {
       'packages/heterogeneous-agents/src/askUser/AskUserBridge.test.ts',
       'packages/heterogeneous-agents/src/askUser/AskUserBridge.validation.test.ts',
       'packages/agent-gateway-client/src/intervention.test.ts',
+      'packages/shared-tool-ui/src/AskUserQuestion/result.test.ts',
       'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.test.ts',
       'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.explicitAnswer.test.ts',
       'packages/shared-tool-ui/src/AskUserQuestion/useAskUserForm.piBridge.test.ts',
