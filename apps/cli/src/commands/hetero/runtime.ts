@@ -1,5 +1,9 @@
 import type { LocalHeterogeneousAgentType } from '@lobechat/heterogeneous-agents';
-import { createPiRpcAgentHandle, type PiRpcStartupControl, preparePiRpcInput } from '@lobechat/heterogeneous-agents/rpc';
+import {
+  createPiRpcAgentHandle,
+  type PiRpcStartupControl,
+  preparePiRpcInput,
+} from '@lobechat/heterogeneous-agents/rpc';
 import { createCodexAgentHandle, spawnAgent } from '@lobechat/heterogeneous-agents/spawn';
 
 import { cliVersion } from '../../pkg';
@@ -26,6 +30,7 @@ const spawnRuntimeRegistry: Partial<
         args: spawnOpts.extraArgs ?? [],
         lobeHubContext: !!spawnOpts.env?.LOBEHUB_TOPIC_ID,
       })),
+      askUserBridge: spawnOpts.askUserBridge,
       commandPath: spawnOpts.command!,
       cwd: spawnOpts.cwd ?? process.cwd(),
       detached: spawnOpts.detached,

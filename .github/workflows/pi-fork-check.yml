@@ -28,10 +28,12 @@ jobs:
         with:
           node-version: '24'
       - name: Install isolated policy parser without lifecycle scripts
-        run: npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0
+        run: npm install --ignore-scripts --no-audit --no-fund --prefix tmp/fork-ci-tools yaml@2.9.0 vitest@5.0.0 debug@4.4.3
       - name: Check inherited workflow isolation and policy regressions
         env:
           NODE_PATH: ${{ github.workspace }}/tmp/fork-ci-tools/node_modules
         run: |
           node --test .github/scripts/forkWorkflowPolicy.test.mjs
           node .github/scripts/forkWorkflowPolicy.mjs
+      - name: Check Pi RPC framing, version, identity and question regressions
+        run: node tmp/fork-ci-tools/node_modules/vitest/vitest.mjs run --config .github/scripts/piRpcChecks.config.mjs

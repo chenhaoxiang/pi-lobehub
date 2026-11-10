@@ -28,6 +28,28 @@ const request = (overrides: Partial<AgentInterventionRequestData> = {}) => ({
 });
 
 describe('sanitizeAgentInterventionRequestForReview', () => {
+  it('retains Pi ownership when reusing the legacy question renderer', () => {
+    expect(
+      sanitizeAgentInterventionRequestForReview(
+        request({
+          identifier: 'claude-code',
+          interactionKind: 'question',
+          provider: 'pi',
+        }),
+      ),
+    ).toMatchObject({ provider: 'pi', identifier: 'claude-code' });
+  });
+  it('preserves explicit-answer timeout policy through durable sanitization', () => {
+    const value = request({ provider: 'pi', interactionKind: 'question' });
+    value.arguments = JSON.stringify({
+      ...JSON.parse(value.arguments),
+      autoSubmitOnTimeout: false,
+    });
+    expect(
+      JSON.parse(sanitizeAgentInterventionRequestForReview(value)!.arguments).autoSubmitOnTimeout,
+    ).toBe(false);
+  });
+
   it('preserves a native Codex free-text question for durable Review', () => {
     const sanitized = sanitizeAgentInterventionRequestForReview(
       request({

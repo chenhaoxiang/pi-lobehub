@@ -148,6 +148,7 @@ export const INTERVENTION_PROVIDERS = new Set<AgentInterventionProvider>([
   'devin',
   'droid',
   'opencode',
+  'pi',
   'qoder',
 ]);
 

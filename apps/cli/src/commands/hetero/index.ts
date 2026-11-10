@@ -16,14 +16,13 @@ import type {
   AgentContentBlock,
   AgentImageSource,
   AgentPromptInput,
-  AgentStreamEvent,
+  spawnAgent,
   UploadHeterogeneousImage,
 } from '@lobechat/heterogeneous-agents/spawn';
 import {
   classifyHeteroProcessFailure,
   createFileStoreImageUploader,
   isHeteroStatusGuideErrorData,
-  spawnAgent,
   spawnDshAcpSession,
 } from '@lobechat/heterogeneous-agents/spawn';
 import { isRecord } from '@lobechat/utils/object';
@@ -565,8 +564,16 @@ const exec = async (options: ExecOptions): Promise<void> => {
   // through durable ingest to the question card; long-poll returns browser
   // answers from the server's Redis stream to the blocked native callback.
   // The bridge timeout bounds the wait, including native Codex requests.
-  const { askBridge, askMcpConfigPath, stop: stopInterventions } = await createHeteroInterventions({
-    agentType, codexAppServer: options.codexAppServer, operationId, serverIngest, serverIngester,
+  const {
+    askBridge,
+    askMcpConfigPath,
+    stop: stopInterventions,
+  } = await createHeteroInterventions({
+    agentType,
+    codexAppServer: options.codexAppServer,
+    operationId,
+    serverIngest,
+    serverIngester,
   });
   /**
    * Build the `finish` error payload. Process-level failures the agent CLI

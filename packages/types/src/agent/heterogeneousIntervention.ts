@@ -11,6 +11,7 @@ export const HETEROGENEOUS_AGENT_INTERVENTION_PROVIDERS = [
   'devin',
   'droid',
   'opencode',
+  'pi',
   'qoder',
 ] as const;
 

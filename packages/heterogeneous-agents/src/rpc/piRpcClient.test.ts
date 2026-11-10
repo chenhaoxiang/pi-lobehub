@@ -172,49 +172,58 @@ describe('PiRpcClient', () => {
     }
   });
 
-  it.each(['0.79.0', '0.80.4', '0.80.5-rc.1', 'unknown'])(
-    'rejects unsupported Pi %s before spawning RPC',
-    async (version) => {
-      execFileMock.mockImplementation((_command, _args, _options, callback) =>
-        callback(null, version, ''),
-      );
-      const client = new PiRpcClient({
-        args: [],
-        commandPath: 'pi',
-        cwd: '/workspace',
-        env: { ...process.env },
-        onEvent: vi.fn(),
-        onStderr: vi.fn(),
-      });
-      await expect(client.start()).rejects.toThrow(/0\.80\.5.*upgrade/i);
-      expect(spawnMock).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    '0.79.0',
+    '0.80.4',
+    '0.80.4-fork.99',
+    '0.80.5-rc.1',
+    '1.5.0-fork.0',
+    '1.5.0-fork.01',
+    'unknown',
+  ])('rejects unsupported Pi %s before spawning RPC', async (version) => {
+    execFileMock.mockImplementation((_command, _args, _options, callback) =>
+      callback(null, version, ''),
+    );
+    const client = new PiRpcClient({
+      args: [],
+      commandPath: 'pi',
+      cwd: '/workspace',
+      env: { ...process.env },
+      onEvent: vi.fn(),
+      onStderr: vi.fn(),
+    });
+    await expect(client.start()).rejects.toThrow(/0\.80\.5.*upgrade/i);
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
 
-  it.each(['0.80.5', 'v0.81.0', '1.0.0', '0.80.5+build.1'])(
-    'accepts supported Pi %s using the spawn environment',
-    async (version) => {
-      execFileMock.mockImplementation((_command, _args, _options, callback) =>
-        callback(null, version, ''),
-      );
-      const { client } = await createReadyClient({
-        env: { ...process.env, PATH: '/custom', HOME: '/test-home' },
-      });
-      expect(execFileMock).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(['--version']),
-        expect.objectContaining({
-          cwd: '/workspace',
-          env: expect.objectContaining({ PATH: '/custom', HOME: '/test-home' }),
-          timeout: 5000,
-        }),
-        expect.any(Function),
-      );
-      await client.start();
-      expect(execFileMock).toHaveBeenCalledTimes(1);
-      await client.close();
-    },
-  );
+  it.each([
+    '0.80.5',
+    'v0.81.0',
+    '1.0.0',
+    '0.80.5+build.1',
+    '1.5.0-fork.4',
+    'v0.80.5-fork.1+build.1',
+  ])('accepts supported Pi %s using the spawn environment', async (version) => {
+    execFileMock.mockImplementation((_command, _args, _options, callback) =>
+      callback(null, version, ''),
+    );
+    const { client } = await createReadyClient({
+      env: { ...process.env, PATH: '/custom', HOME: '/test-home' },
+    });
+    expect(execFileMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining(['--version']),
+      expect.objectContaining({
+        cwd: '/workspace',
+        env: expect.objectContaining({ PATH: '/custom', HOME: '/test-home' }),
+        timeout: 5000,
+      }),
+      expect.any(Function),
+    );
+    await client.start();
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    await client.close();
+  });
 
   it('notifies the session of idle process death and revokes readiness', async () => {
     const onError = vi.fn();
@@ -312,6 +321,59 @@ describe('PiRpcClient', () => {
       ).toBe(true);
     });
     await client.close();
+  });
+
+  it('keeps reading command replies and process death while a UI answer is pending', async () => {
+    let answer!: () => void;
+    const onError = vi.fn();
+    const onEvent = vi.fn();
+    const pendingUi = new Promise<undefined>((resolve) => (answer = () => resolve(undefined)));
+    const { child, client, stdout, writes } = await createReadyClient({
+      onError,
+      onEvent,
+      onExtensionUiRequest: () => pendingUi,
+    });
+    try {
+      stdout.write(
+        `${JSON.stringify({ id: 'waiting-ui', method: 'input', title: 'Question', type: 'extension_ui_request' })}\n`,
+      );
+      const abort = client.abort();
+      void abort.catch(() => {});
+      stdout.write(
+        `${JSON.stringify({ command: 'abort', id: writes.at(-1)!.id, success: true, type: 'response' })}\n`,
+      );
+      stdout.write(`${JSON.stringify({ type: 'agent_settled', aborted: true })}\n`);
+      await vi.waitFor(
+        () => expect(onEvent).toHaveBeenCalledWith({ type: 'agent_settled', aborted: true }),
+        { timeout: 200 },
+      );
+      await abort;
+      child.emit('close', 1, null);
+      await vi.waitFor(() => expect(onError).toHaveBeenCalled(), { timeout: 200 });
+    } finally {
+      answer();
+      await client.close();
+    }
+  });
+
+  it('rejects a get_state response without native session identity', async () => {
+    const { child, stdout, writes } = createProcess();
+    spawnMock.mockReturnValue(child);
+    const client = new PiRpcClient({
+      args: [],
+      commandPath: 'pi',
+      cwd: '/workspace',
+      env: {},
+      onEvent: vi.fn(),
+      onStderr: vi.fn(),
+    });
+    const started = client.start();
+    const rejected = expect(started).rejects.toThrow('native session identity');
+    await vi.waitFor(() => expect(writes.some((write) => write.type === 'get_state')).toBe(true));
+    stdout.write(
+      `${JSON.stringify({ type: 'response', command: 'get_state', success: true, data: {}, id: writes.at(-1)!.id })}\n`,
+    );
+    await rejected;
   });
 
   it('hard-fails the handshake when get_state never answers', async () => {

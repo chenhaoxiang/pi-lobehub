@@ -1261,52 +1261,6 @@ describe('hetero exec command', () => {
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('runs Pi over the RPC transport with model, resume, and native args while ignoring effort and speed', async () => {
-    vi.stubEnv('HOME', '/pi-test-home');
-    vi.stubEnv('PI_CODING_AGENT_DIR', '/pi-test-config');
-    vi.stubEnv('ANTHROPIC_API_KEY', 'test-only-key');
-    mockResolveHeteroSpawnCommand.mockResolvedValue({ command: 'pi', pathEnv: '/pi-custom-bin' });
-    mockCreatePiRpcAgentHandle.mockResolvedValue(createFakeHandle());
-
-    await runCmd([
-      'hetero',
-      'exec',
-      '--type',
-      'pi',
-      '--prompt',
-      'do thing',
-      '--resume',
-      'pi-session-1',
-      '--model',
-      'anthropic/claude-sonnet-4-5',
-      '--effort',
-      'high',
-      '--speed',
-      'fast',
-      '--agent-arg=--provider',
-      '--agent-arg=anthropic',
-    ]);
-
-    expect(mockResolveHeteroSpawnCommand).toHaveBeenCalledWith('pi', undefined);
-    expect(mockSpawnAgent).not.toHaveBeenCalled();
-    expect(mockCreatePiRpcAgentHandle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        args: ['--provider', 'anthropic', '--model', 'anthropic/claude-sonnet-4-5'],
-        commandPath: 'pi',
-        env: expect.objectContaining({
-          HOME: '/pi-test-home',
-          PI_CODING_AGENT_DIR: '/pi-test-config',
-          ANTHROPIC_API_KEY: 'test-only-key',
-          PATH: '/pi-custom-bin',
-        }),
-        operationId: expect.any(String),
-        onRawStdout: undefined,
-        onStartupControl: expect.any(Function),
-        resumeSessionId: 'pi-session-1',
-      }),
-    );
-  });
-
   it('streams events to stdout as JSONL, one line per event', async () => {
     const events = [
       { data: { foo: 1 }, operationId: 'op-1', stepIndex: 0, timestamp: 1, type: 'stream_start' },

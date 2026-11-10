@@ -467,7 +467,7 @@ export const useAskUserForm = ({
     // A stable id means this is a provider-owned choice (permission/plan or a
     // newer exact-id question). Never infer consent by selecting option one:
     // let the producer timeout/cancel fail closed.
-    if (hasProviderOwnedOptionIds) return;
+    if (hasProviderOwnedOptionIds || args?.autoSubmitOnTimeout === false) return;
     setAutoSubmitted(true);
     if (escapeActive && escapeAvailable && escapeText.trim().length > 0) {
       void submitWith({ [FREEFORM_PAYLOAD_KEY]: escapeText.trim() });
@@ -502,6 +502,7 @@ export const useAskUserForm = ({
     supplementText,
     submitWith,
     hasProviderOwnedOptionIds,
+    args?.autoSubmitOnTimeout,
   ]);
 
   const activeQuestion = questions[Number(activeTab)] ?? questions[0];

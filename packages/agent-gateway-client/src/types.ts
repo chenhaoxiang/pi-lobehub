@@ -278,7 +278,7 @@ export type AgentInterventionInteractionKind = 'permission' | 'plan' | 'question
 
 /** Producer that owns the blocked interaction. */
 export type AgentInterventionProvider =
-  'claude-code' | 'codex' | 'copilot' | 'cursor' | 'devin' | 'droid' | 'opencode' | 'qoder';
+  'claude-code' | 'codex' | 'copilot' | 'cursor' | 'devin' | 'droid' | 'opencode' | 'pi' | 'qoder';
 
 /** Whitelisted option surface that may be persisted for cold-start review. */
 export interface AgentInterventionRenderOption {
@@ -297,6 +297,7 @@ export interface AgentInterventionRenderQuestion {
 }
 
 export interface AgentInterventionRenderArguments {
+  autoSubmitOnTimeout?: false;
   questions: AgentInterventionRenderQuestion[];
 }
 

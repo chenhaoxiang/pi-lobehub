@@ -19,6 +19,7 @@ const PROVIDERS = new Set<AgentInterventionProvider>([
   'devin',
   'droid',
   'opencode',
+  'pi',
   'qoder',
 ]);
 
@@ -119,7 +120,12 @@ export const sanitizeAgentInterventionRequestForReview = (
 
   return {
     apiName: request.apiName,
-    arguments: JSON.stringify({ questions } satisfies AgentInterventionRenderArguments),
+    arguments: JSON.stringify({
+      ...(asRecord(parsed)?.autoSubmitOnTimeout === false
+        ? { autoSubmitOnTimeout: false as const }
+        : {}),
+      questions,
+    } satisfies AgentInterventionRenderArguments),
     deadline: request.deadline,
     identifier: request.identifier,
     interactionKind: request.interactionKind,

@@ -31,6 +31,7 @@ export const createHeteroInterventions = async (options: {
       agentType === 'copilot' ||
       agentType === 'cursor' ||
       agentType === 'droid' ||
+      agentType === 'pi' ||
       agentType === 'devin' ||
       agentType === 'qoder') &&
     serverIngester
@@ -40,10 +41,11 @@ export const createHeteroInterventions = async (options: {
       agentType === 'copilot' ||
       agentType === 'cursor' ||
       agentType === 'devin' ||
-      agentType === 'droid'
+      agentType === 'droid' ||
+      agentType === 'pi'
     ) {
       askBridge = new AskUserBridge(operationId, {
-        identifier: agentType === 'cursor' ? 'claude-code' : agentType,
+        identifier: agentType === 'cursor' || agentType === 'pi' ? 'claude-code' : agentType,
         provider: agentType,
       });
     } else {
