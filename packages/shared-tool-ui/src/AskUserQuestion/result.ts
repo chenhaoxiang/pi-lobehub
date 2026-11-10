@@ -1,3 +1,16 @@
+import type { AskUserQuestionItem } from './types';
+
+/** Display provider labels while retaining exact ids in the answer payload. */
+export const resolveQuestionAnswerLabels = (
+  question: AskUserQuestionItem,
+  answer: string | string[] | undefined,
+): string[] => {
+  const values = Array.isArray(answer) ? answer : answer !== undefined ? [answer] : [];
+  return values.map(
+    (value) => question.options.find((option) => option.id === value)?.label ?? value,
+  );
+};
+
 export interface AskUserQuestionResultState {
   askUserAnswers?: Record<string, string | string[]>;
 }
