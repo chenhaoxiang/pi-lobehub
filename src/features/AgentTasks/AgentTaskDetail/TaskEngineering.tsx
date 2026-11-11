@@ -1,6 +1,7 @@
 import { Button, Flexbox, Text } from '@lobehub/ui';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SWRConfig } from 'swr';
 
 import AsyncError from '@/components/AsyncError';
 import Time from '@/features/Home/components/Time';
@@ -11,8 +12,16 @@ import { useUserStore } from '@/store/user';
 import { authSelectors } from '@/store/user/selectors';
 import { isTrpcErrorCode } from '@/utils/trpcError';
 
+import {
+  engineeringOwnerPhaseKey,
+  engineeringOwnerReasonKey,
+} from './engineeringOwnerPresentation';
+
+/** Original-source reads are explicitly requested, never a background retry loop. */
+const OWNER_READ_POLICY = { errorRetryCount: 0, shouldRetryOnError: false };
+
 /** A task's explicit engineering links, not a second ship/merge authority. */
-export const TaskEngineering = () => {
+const TaskEngineeringBody = () => {
   const { t } = useTranslation('chat');
   const [expanded, setExpanded] = useState(false);
   const taskId = useTaskStore(taskDetailSelectors.activeTaskDatabaseId);
@@ -51,6 +60,10 @@ export const TaskEngineering = () => {
           {!!error && (
             <AsyncError
               action={retryable ? refresh : undefined}
+              error={error}
+              retrying={isValidating}
+              title={t('taskDetail.engineering.error')}
+              variant="inline"
               description={t(
                 !retryable
                   ? 'taskDetail.engineering.accessUnavailable'
@@ -58,10 +71,6 @@ export const TaskEngineering = () => {
                     ? 'taskDetail.engineering.stale'
                     : 'taskDetail.engineering.retryHint',
               )}
-              error={error}
-              retrying={isValidating}
-              title={t('taskDetail.engineering.error')}
-              variant="inline"
             />
           )}
           {!snapshot && !error && (
@@ -156,9 +165,48 @@ export const TaskEngineering = () => {
                   {t('taskDetail.engineering.prLimit', { limit: snapshot.prLimit })}
                 </Text>
               )}
-              <Text fontSize={12} type="secondary">
-                {t('taskDetail.engineering.gateUnknown')}
-              </Text>
+              {snapshot.ownerObservation?.status === 'observed' ? (
+                <Flexbox gap={6}>
+                  <Text weight={500}>{t('taskDetail.engineering.owner.title')}</Text>
+                  <Text fontSize={12} style={{ overflowWrap: 'anywhere' }}>
+                    {snapshot.ownerObservation.repository}#{snapshot.ownerObservation.pullRequest} ·{' '}
+                    {snapshot.ownerObservation.headSha}
+                  </Text>
+                  <Text fontSize={12}>
+                    {t(engineeringOwnerPhaseKey(snapshot.ownerObservation))}
+                  </Text>
+                  <Text fontSize={12} type="secondary">
+                    {t(
+                      snapshot.ownerObservation.sourceType === 'repository-review'
+                        ? 'taskDetail.engineering.owner.repositoryReview'
+                        : 'taskDetail.engineering.owner.originalGate',
+                    )}
+                  </Text>
+                  <Text fontSize={12} type="secondary">
+                    {t('taskDetail.engineering.owner.waitReason', {
+                      reason: t(engineeringOwnerReasonKey(snapshot.ownerObservation)),
+                    })}
+                  </Text>
+                  <Text fontSize={12} type="secondary">
+                    {t('taskDetail.engineering.owner.scope')}
+                  </Text>
+                  <Flexbox horizontal align="center" gap={8} wrap="wrap">
+                    <Text fontSize={12} type="secondary">
+                      {t('taskDetail.engineering.owner.observedAt')}
+                    </Text>
+                    <Time date={snapshot.ownerObservation.observedAt} />
+                  </Flexbox>
+                </Flexbox>
+              ) : (
+                <Text fontSize={12} type="secondary">
+                  {t(
+                    snapshot.ownerObservation &&
+                      snapshot.ownerObservation.reason !== 'not-configured'
+                      ? 'taskDetail.engineering.owner.unavailable'
+                      : 'taskDetail.engineering.gateUnknown',
+                  )}
+                </Text>
+              )}
               <Flexbox horizontal align="center" gap={8} wrap="wrap">
                 <Text fontSize={12} type="secondary">
                   {t('taskDetail.engineering.observedAt')}
@@ -172,3 +220,9 @@ export const TaskEngineering = () => {
     </Flexbox>
   );
 };
+
+export const TaskEngineering = () => (
+  <SWRConfig value={OWNER_READ_POLICY}>
+    <TaskEngineeringBody />
+  </SWRConfig>
+);

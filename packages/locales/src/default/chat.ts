@@ -1781,6 +1781,44 @@ export default {
   'selectedAgents': 'Selected agents',
   'floatingChatPanel.collapse': 'Collapse chat',
   'floatingChatPanel.expand': 'Expand chat',
+  'taskDetail.engineering.owner.reason.pr_not_ready': 'The pull request is not ready',
+  'taskDetail.engineering.owner.reason.required_checks_pending':
+    'Required checks are still running',
+  'taskDetail.engineering.owner.reason.required_checks_failed': 'Required checks did not pass',
+  'taskDetail.engineering.owner.reason.required_checks_missing':
+    'A required check original is missing',
+  'taskDetail.engineering.owner.reason.owner_delivery_pending':
+    'Waiting for the original owner delivery',
+  'taskDetail.engineering.owner.reason.postmerge_workflows_pending':
+    'Post-merge checks are still running',
+  'taskDetail.engineering.owner.reason.postmerge_workflows_failed':
+    'Post-merge checks did not pass',
+  'taskDetail.engineering.owner.reason.postmerge_workflows_missing':
+    'A post-merge check original is missing',
+  'taskDetail.engineering.owner.reason.owner_gate_unavailable':
+    'The original owner Gate could not be read',
+  'taskDetail.engineering.owner.reason.source_binding_mismatch':
+    'The source binding changed or does not match',
+  'taskDetail.engineering.owner.reason.source_original_unavailable':
+    'Complete stable originals could not be read',
+  'taskDetail.engineering.owner.noWait': 'No outstanding source-stage wait',
+  'taskDetail.engineering.owner.title': 'Original owner source-stage observation',
+  'taskDetail.engineering.owner.repositoryReview':
+    'Source: the original owner’s pinned independent review, exact checks and merged-source evidence; no Meta Gate is fabricated.',
+  'taskDetail.engineering.owner.originalGate':
+    'Source: the original owner Gate, exact checks and merged-source evidence.',
+  'taskDetail.engineering.owner.waitReason': 'Original reader reason: {{reason}}',
+  'taskDetail.engineering.owner.scope':
+    'Source-delivery scope only. This observation grants no execution or merge permission and does not sign off the business Task, deployment or installation.',
+  'taskDetail.engineering.owner.observedAt': 'Originals read at',
+  'taskDetail.engineering.owner.unavailable':
+    'The selected original owner record could not be read for this Task. State remains unknown; refresh to retry. No private source path is exposed.',
+  'taskDetail.engineering.owner.phase.pull-request': 'Pull request not ready',
+  'taskDetail.engineering.owner.phase.head-checks': 'Original head checks',
+  'taskDetail.engineering.owner.phase.owner-gate': 'Waiting for the original owner delivery',
+  'taskDetail.engineering.owner.phase.postmerge-checks': 'Original post-merge checks',
+  'taskDetail.engineering.owner.phase.source-delivery': 'Source-delivery originals verified',
+  'taskDetail.engineering.owner.phase.unknown': 'Original source stage unknown',
   'taskDetail.engineering.expand': 'Engineering records · read on demand',
   'taskDetail.engineering.collapse': 'Engineering records · collapse',
   'taskDetail.engineering.refresh': 'Refresh records',

@@ -765,6 +765,7 @@ export class TaskDetailSliceActionImpl {
     this.#engineering.useSync(taskId ?? '', {
       enabled: !!taskId && enabled,
       revalidateOnFocus: false,
+      revalidateOnReconnect: false,
       refreshInterval: 0,
     });
 

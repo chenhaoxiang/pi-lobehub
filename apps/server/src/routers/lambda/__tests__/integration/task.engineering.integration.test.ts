@@ -1,11 +1,13 @@
 // @vitest-environment node
 import type { LobeChatDatabase } from '@lobechat/database';
 import { getTestDB } from '@lobechat/database/test-utils';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ScmChangeRequestModel } from '@/database/models/scm';
 import { TaskModel } from '@/database/models/task';
-import { acceptances } from '@/database/schemas';
+import { acceptances, scmChangeRequests, tasks } from '@/database/schemas';
+import { TaskEngineeringOwnerReader } from '@/server/services/taskEngineering/TaskEngineeringOwnerReader';
 
 import { taskRouter } from '../../task';
 import { cleanupTestUser, createTestContext, createTestUser } from './setup';
@@ -22,9 +24,72 @@ beforeEach(async () => {
 afterEach(async () => {
   await cleanupTestUser(db, userId);
   await cleanupTestUser(db, otherId);
+  vi.restoreAllMocks();
 });
 
 describe('task.engineering read-only original query', () => {
+  it('never calls the host reader for an inaccessible Task, and rechecks trash after host IO', async () => {
+    const task = await new TaskModel(db, userId).create({
+      instruction: 'Originals cannot bypass visibility',
+    });
+    const read = vi
+      .spyOn(TaskEngineeringOwnerReader.prototype, 'read')
+      .mockImplementation(async () => {
+        await db.update(tasks).set({ isDeleted: true }).where(eq(tasks.id, task.id));
+        return { status: 'unavailable', reason: 'source-unavailable' };
+      });
+    await expect(
+      taskRouter.createCaller(createTestContext(otherId)).engineering({ taskId: task.id }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(read).not.toHaveBeenCalled();
+    await expect(
+      taskRouter.createCaller(createTestContext(userId)).engineering({ taskId: task.id }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not relabel a source observation when linked head changes during the original read', async () => {
+    const task = await new TaskModel(db, userId).create({ instruction: 'Fence the original head' });
+    const head = 'a'.repeat(40);
+    const row = await ScmChangeRequestModel.upsert(db, {
+      userId,
+      provider: 'github',
+      repoFullName: 'fixture/public',
+      number: 1,
+      url: 'https://github.com/fixture/public/pull/1',
+      headSha: head,
+      state: 'open',
+      links: { taskId: task.id },
+      metadata: { repoPrivate: false },
+    });
+    vi.spyOn(TaskEngineeringOwnerReader.prototype, 'read').mockImplementation(async () => {
+      await db
+        .update(scmChangeRequests)
+        .set({ headSha: 'b'.repeat(40) })
+        .where(eq(scmChangeRequests.id, row.id));
+      return {
+        status: 'observed',
+        source: 'pi-vista-original-reader',
+        sourceType: 'repository-review',
+        scope: 'source-shared-delivery-only',
+        authorization: 'none',
+        readOnly: true,
+        repository: row.repoFullName,
+        pullRequest: 1,
+        headSha: head,
+        observedAt: Date.now(),
+        phase: 'source-delivery',
+        waitReason: 'none',
+        nextAction: 'inspect_result',
+      };
+    });
+    const value = await taskRouter
+      .createCaller(createTestContext(userId))
+      .engineering({ taskId: task.id });
+    expect(value.ownerObservation).toEqual({ status: 'unavailable', reason: 'binding-mismatch' });
+    expect(value.pullRequests[0].headSha).toBe('b'.repeat(40));
+  });
+
   it('distinguishes a settled unlinked Task from missing or inaccessible Tasks', async () => {
     const task = await new TaskModel(db, userId).create({ instruction: 'Read only' });
     const caller = taskRouter.createCaller(createTestContext(userId));

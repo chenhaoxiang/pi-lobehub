@@ -9,6 +9,7 @@ import { TaskUsageModel } from '@/database/models/taskUsage';
 import { UserModel } from '@/database/models/user';
 import { router } from '@/libs/trpc/lambda';
 import { resolveTaskOrThrow } from '@/server/services/task/utils';
+import { TaskEngineeringOwnerReader } from '@/server/services/taskEngineering/TaskEngineeringOwnerReader';
 
 import { groupListSchema, listSchema, resolveClosedAfter } from '../_helpers/taskListSchemas';
 import { idInput, taskProcedure } from './procedures';
@@ -17,13 +18,36 @@ export const queriesRouter = router({
   engineering: taskProcedure
     .input(z.object({ taskId: z.string().min(1) }))
     .query(async ({ input, ctx }) => {
-      const data = await new TaskEngineeringModel(
+      const model = new TaskEngineeringModel(
         ctx.serverDB,
         ctx.userId,
         ctx.workspaceId ?? undefined,
-      ).read(input.taskId);
+      );
+      const data = await model.read(input.taskId);
       if (!data) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
-      return data;
+      const ownerObservation = await new TaskEngineeringOwnerReader().read(
+        input.taskId,
+        data.pullRequests,
+      );
+      if (ownerObservation.status === 'unavailable' && ownerObservation.reason === 'not-configured')
+        return { ...data, ownerObservation };
+      // Original reads may await bounded host IO. Recheck visibility and explicit PR/head linkage.
+      const current = await model.read(input.taskId);
+      if (!current) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
+      if (
+        ownerObservation.status === 'observed' &&
+        !current.pullRequests.some(
+          (pr) =>
+            pr.repository === ownerObservation.repository &&
+            pr.number === ownerObservation.pullRequest &&
+            (!pr.headSha || pr.headSha === ownerObservation.headSha),
+        )
+      )
+        return {
+          ...current,
+          ownerObservation: { status: 'unavailable' as const, reason: 'binding-mismatch' as const },
+        };
+      return { ...current, ownerObservation };
     }),
   currentUsage: taskProcedure
     .input(z.object({ taskId: z.string().min(1) }))
