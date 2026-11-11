@@ -159,9 +159,12 @@ export class TaskLifecycleService {
       return;
     }
 
-    await this.taskModel.updateHeartbeat(taskId);
-
     const currentTask = await this.taskModel.findById(taskId);
+    // A fresh Task attempt can use a different topic. Same-topic operation
+    // ordering alone cannot fence a delayed completion of the previous attempt.
+    if (topicId && currentTask?.currentTopicId && currentTask.currentTopicId !== topicId) return;
+
+    await this.taskModel.updateHeartbeat(taskId);
 
     // Whether a confirmed verify plan owns this run's delivery acceptance. Set in
     // the 'done' branch; gates both the pause-for-review skip and (below) the

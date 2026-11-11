@@ -2738,6 +2738,20 @@ export default {
     'What to change in the recipe — required to revise it; it becomes the next version',
   'goalProcess.gate.batchCorrectionRequired': 'Write the correction before revising the recipe',
   'goalProcess.gate.notePlaceholder': 'Optional — goes into the next attempt instructions',
+  'goalProcess.gate.title.reworkScope': 'Confirm rework scope',
+  'goalProcess.decision.asks.reworkScope': 'needs your rework scope decision',
+  'goalProcess.decision.summary.reworkScope':
+    'Confirm which results after {{task}} need rework and which can be reused.',
+  'goalProcess.gate.option.confirmReworkScope': 'Confirm scope and rework the original task',
+  'goalProcess.gate.reworkScopeQuestion':
+    'Confirm the rework scope for {{task}}. Request changes on downstream deliveries that must be reworked, then record which results can be reused. The unsigned final review will run again. Running operations are not stopped automatically.\nAffected tasks:\n{{tasks}}',
+  'goalProcess.gate.reworkScopeBasisWithoutComment': 'Changes requested. Related tasks:\n{{tasks}}',
+  'goalProcess.gate.reworkScopeBasis': 'Changes requested: {{comment}}\nRelated tasks:\n{{tasks}}',
+  'goalProcess.gate.reworkScopeDescription':
+    'Reopen the original task only after the downstream scope is settled. Other downstream tasks are not automatically repeated.',
+  'goalProcess.gate.reworkScopeRequired': 'Record the downstream rework and reuse scope first',
+  'goalProcess.gate.reworkScopePlaceholder':
+    'Required — name the downstream deliveries to rework and the results to reuse',
   'goalProcess.gate.option.retry': 'Retry work',
   'goalProcess.gate.option.fixedRetry': 'I fixed it — retry',
   'goalProcess.gate.option.retire': 'Retire work',

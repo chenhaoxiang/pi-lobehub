@@ -1,6 +1,10 @@
 'use client';
 
-import { GOAL_BATCH_BREAK_OPTION, GOAL_BATCH_RELEASE_OPTION } from '@lobechat/const/goal';
+import {
+  GOAL_BATCH_BREAK_OPTION,
+  GOAL_BATCH_RELEASE_OPTION,
+  GOAL_REWORK_SCOPE_OPTION,
+} from '@lobechat/const/goal';
 import type { GoalDecisionOption } from '@lobechat/types';
 import { Center, createStaticStyles, cssVar, Flexbox, Icon, Text, toast } from '@lobehub/ui';
 import { MonitorCog } from 'lucide-react';
@@ -131,6 +135,9 @@ export const useGateOptionCopy = () => {
       ) => {
         const terminalAcceptance = category === 'goalAcceptance';
         switch (option.id) {
+          case GOAL_REWORK_SCOPE_OPTION: {
+            return t('goalProcess.gate.reworkScopeDescription');
+          }
           case 'retry': {
             if (category === 'machine') return t('goalProcess.decision.effect.fixedRetry');
             return terminalAcceptance
@@ -337,7 +344,10 @@ const GoalDecisionCase = ({
   const rawReason = coordinatorGateReason(decision.question) ?? decision.question;
   // Every blocker of a compound batch reason, not just a single one.
   const questionText = localizedCoordinatorReason(rawReason, t as any);
-  const basisText = basis && basis.trim() !== rawReason.trim() ? basis.trim() : undefined;
+  const basisText =
+    basis && basis.trim() !== rawReason.trim()
+      ? localizedCoordinatorReason(basis.trim(), t as any)
+      : undefined;
 
   const questions = useMemo(() => {
     const gateKind = coordinatorGateKind(decision);
@@ -362,8 +372,15 @@ const GoalDecisionCase = ({
     async (answers: ClarificationAnswer[]) => {
       const answer = toGateAnswer(decision, answers);
       if (!answer) return false;
-      if (gateAnswerProblem(answer) === 'correctionRequired') {
-        toast.error(t('goalProcess.gate.batchCorrectionRequired'));
+      const problem = gateAnswerProblem(answer);
+      if (problem) {
+        toast.error(
+          t(
+            problem === 'scopeRequired'
+              ? 'goalProcess.gate.reworkScopeRequired'
+              : 'goalProcess.gate.batchCorrectionRequired',
+          ),
+        );
         return false;
       }
       await onDecide(answer.optionId, answer.resolution?.trim() || undefined);
@@ -389,9 +406,11 @@ const GoalDecisionCase = ({
           questions={questions}
           submitLabel={t('goalProcess.decision.submit')}
           supplementPlaceholder={t(
-            batchBreak
-              ? 'goalProcess.gate.batchCorrectionPlaceholder'
-              : 'goalProcess.gate.notePlaceholder',
+            category === 'reworkScope'
+              ? 'goalProcess.gate.reworkScopePlaceholder'
+              : batchBreak
+                ? 'goalProcess.gate.batchCorrectionPlaceholder'
+                : 'goalProcess.gate.notePlaceholder',
           )}
           onSubmit={handleSubmit}
         />

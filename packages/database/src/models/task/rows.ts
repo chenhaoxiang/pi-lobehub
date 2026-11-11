@@ -272,18 +272,26 @@ export const reorder = async (
   }
 };
 
-/** Atomically transition a task only while it still has the expected status. */
+/** Atomically transition the expected status and, for a run owner, its start generation. */
 export const updateStatusIfCurrent = async (
   ctx: TaskModelContext,
   id: string,
   currentStatus: string,
   status: string,
   extra?: { completedAt?: Date | null; error?: string | null; startedAt?: Date },
+  expectedStartedAt?: Date,
 ): Promise<TaskItem | null> => {
   const [task] = await ctx.db
     .update(tasks)
     .set({ status, updatedAt: new Date(), ...extra })
-    .where(and(eq(tasks.id, id), eq(tasks.status, currentStatus), taskOwnership(ctx)))
+    .where(
+      and(
+        eq(tasks.id, id),
+        eq(tasks.status, currentStatus),
+        expectedStartedAt ? eq(tasks.startedAt, expectedStartedAt) : undefined,
+        taskOwnership(ctx),
+      ),
+    )
     .returning();
 
   return task ?? null;

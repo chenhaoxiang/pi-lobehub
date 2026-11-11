@@ -13,6 +13,7 @@ import debug from 'debug';
 
 import { TopicTrigger } from '@/const/topic';
 import { AgentModel } from '@/database/models/agent';
+import { AgentOperationModel } from '@/database/models/agentOperation';
 import { BriefModel } from '@/database/models/brief';
 import { TaskModel } from '@/database/models/task';
 import { TaskTopicModel } from '@/database/models/taskTopic';
@@ -23,6 +24,10 @@ import { resolveFailedRunStatus } from '@/server/services/goal/recoveryPolicy';
 import { resolveMissingTaskModelConfig } from '@/server/services/task/modelSnapshot';
 import { createTaskRunHooks } from '@/server/services/task/runHooks';
 import { readTaskSkillIds } from '@/server/services/userSkill';
+import {
+  assertTaskAcceptanceHasRemainingChecks,
+  TaskAcceptanceNeedsNewChecksError,
+} from '@/server/services/verify/taskPlanPreflight';
 
 import { buildTaskPrompt } from './buildTaskPrompt';
 import {
@@ -50,6 +55,8 @@ export interface RunTaskParams {
   /** Explicit device target for this run only. The Task itself does not retain the binding. */
   deviceId?: string;
   extraPrompt?: string;
+  /** Internal: exact start generation returned by the Goal coordinator’s claim. */
+  goalClaimStartedAt?: Date;
   /** Optional per-operation cap. Omitted means the agent runtime remains uncapped. */
   maxSteps?: number;
   /**
@@ -165,6 +172,7 @@ export class TaskRunnerService {
   async runTask(params: RunTaskParams): Promise<RunTaskResult> {
     const {
       additionalPluginIds,
+      goalClaimStartedAt,
       taskId,
       continueTopicId,
       deviceId,
@@ -193,11 +201,22 @@ export class TaskRunnerService {
     // catch-block rollback must only fire when we own the running state —
     // otherwise an early failure (e.g. CONFLICT thrown because a concurrent
     // run is in flight) would clobber the in-flight run's status to 'paused'.
+    if (
+      goalClaimStartedAt &&
+      (trigger !== 'goal' ||
+        task.status !== 'running' ||
+        task.startedAt?.getTime() !== goalClaimStartedAt.getTime())
+    ) {
+      throw new TRPCError({ code: 'CONFLICT', message: 'Goal task run claim was withdrawn.' });
+    }
     let weSetRunning = false;
+    let runStartedAt = goalClaimStartedAt ?? task.startedAt ?? undefined;
     // A continued topic retargeted for this run only, and what to put back if
     // the run is not accepted — see `syncTopicExecution`.
     let topicRetarget: TopicRetarget | undefined;
     let runAccepted = false;
+    let boundOperationId: string | undefined;
+    let boundTopicId: string | undefined;
 
     try {
       if (!task.assigneeAgentId) {
@@ -225,7 +244,13 @@ export class TaskRunnerService {
 
       if (continueTopicId) {
         const target = existingTopics.find((t) => t.topicId === continueTopicId);
-        if (target?.status === 'running') {
+        if (!target) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Continued topic does not belong to this task.',
+          });
+        }
+        if (target.status === 'running') {
           throw new TRPCError({
             code: 'CONFLICT',
             message: `Topic ${continueTopicId} is already running.`,
@@ -239,6 +264,17 @@ export class TaskRunnerService {
             message: `Task already has a running topic (${runningTopic.topicId}). Cancel it first or use --continue.`,
           });
         }
+      }
+
+      // A running Task without its topic is still owned by the caller starting
+      // it. Only a Goal caller that already won its conditional claim may enter
+      // that window; a second manual/tick/dependency kickoff must not dispatch.
+      if (task.status === 'running' && !goalClaimStartedAt) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            'Task is already running or being started. Pause it before starting another run.',
+        });
       }
 
       // Auto-detect and clean up timed-out topics
@@ -287,6 +323,24 @@ export class TaskRunnerService {
         extraPrompt,
       );
 
+      if (acceptanceEnabled) {
+        try {
+          await assertTaskAcceptanceHasRemainingChecks(
+            this.db,
+            this.userId,
+            task.id,
+            this.workspaceId,
+          );
+        } catch (error) {
+          if (!(error instanceof TaskAcceptanceNeedsNewChecksError)) throw error;
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            cause: error,
+            message: error.message,
+          });
+        }
+      }
+
       if (task.status !== 'running') {
         // Conditional on the status read above: a task deleted (or started by
         // another caller) in the meantime must not get an agent dispatched.
@@ -314,6 +368,7 @@ export class TaskRunnerService {
           });
         }
         weSetRunning = true;
+        runStartedAt = started.startedAt ?? undefined;
       } else if (task.error) {
         await this.taskModel.update(task.id, { error: null });
       }
@@ -420,7 +475,63 @@ export class TaskRunnerService {
       log('runTask: %s (continue=%s, model=%s)', taskIdentifier, continueTopicId, model);
 
       const result = await aiAgentService.execAgent({
-        ...(onOperationCreated ? { onOperationCreated } : {}),
+        onOperationCreated: async (operationId) => {
+          // Both server and native runtimes await this hook after persisting the
+          // Operation, but before scheduling/spawning it. Completion must find
+          // its TaskTopic even if Pi finishes before execAgent returns.
+          const operation = await new AgentOperationModel(
+            this.db,
+            this.userId,
+            this.workspaceId,
+          ).findById(operationId);
+          if (!operation?.topicId || operation.taskId !== task.id) {
+            throw new Error('Task operation was not persisted with its task and topic');
+          }
+          await this.db.transaction(async (tx) => {
+            const taskModel = new TaskModel(tx, this.userId, this.workspaceId);
+            const taskTopicModel = new TaskTopicModel(tx, this.userId, this.workspaceId);
+            if (!(await taskModel.lockForUpdate(task.id))) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'Task was deleted before dispatch',
+              });
+            }
+            const current = await taskModel.findById(task.id);
+            if (
+              current?.status !== 'running' ||
+              current.archivedAt ||
+              (runStartedAt && current.startedAt?.getTime() !== runStartedAt.getTime())
+            ) {
+              throw new TRPCError({
+                code: 'CONFLICT',
+                message: 'Task run claim was withdrawn before dispatch',
+              });
+            }
+            const live = await taskTopicModel.findByTaskId(task.id);
+            if (live.some((row) => row.status === 'running' && row.operationId !== operationId)) {
+              throw new TRPCError({
+                code: 'CONFLICT',
+                message: 'Another operation already owns this task.',
+              });
+            }
+            if (continueTopicId) {
+              await taskTopicModel.updateOperationId(task.id, continueTopicId, operationId);
+              await taskTopicModel.updateStatus(task.id, continueTopicId, 'running');
+              await taskModel.updateCurrentTopic(task.id, continueTopicId);
+            } else {
+              await taskModel.incrementTopicCount(task.id);
+              await taskModel.updateCurrentTopic(task.id, operation.topicId!);
+              await taskTopicModel.add(task.id, operation.topicId!, {
+                operationId,
+                seq: (current.totalTopics || 0) + 1,
+                trigger,
+              });
+            }
+          });
+          boundOperationId = operationId;
+          boundTopicId = operation.topicId;
+          await onOperationCreated?.(operationId);
+        },
         ...(isSlug ? { slug: agentRef } : { agentId: agentRef }),
         additionalPluginIds: pluginIds,
         ...(typeof taskConfig.model === 'string' && { model: taskConfig.model }),
@@ -469,7 +580,7 @@ export class TaskRunnerService {
         // the Task looking in flight — a goal coordinator would even record a
         // `started_run` for it — with nothing left to ever settle it. Keep the
         // attempt visible as a failed run, then fail the kickoff like any other.
-        if (result.topicId && !continueTopicId) {
+        if (result.topicId && !continueTopicId && !boundOperationId) {
           await this.taskModel.incrementTopicCount(task.id);
           await this.taskModel.updateCurrentTopic(task.id, result.topicId);
           await this.taskTopicModel.add(task.id, result.topicId, {
@@ -483,6 +594,7 @@ export class TaskRunnerService {
             task.id,
             result.topicId,
             resolveFailedRunStatus(result.error),
+            { reportedOperationId: result.operationId },
           );
         }
         throw new Error(result.error || result.message || 'Agent run failed to start');
@@ -514,7 +626,13 @@ export class TaskRunnerService {
           const current = await taskModel.findById(task.id);
           if (current?.status === 'canceled') return 'canceled' as const;
           if (current?.status === 'backlog') return 'withdrawn' as const;
-          if (continueTopicId) {
+          // Production runtimes already bound the row before execution. Do
+          // not reopen it here: its completion/verification may already have
+          // settled it. The fallback covers a dispatcher without the hook.
+          if (boundOperationId) {
+            if (boundOperationId !== result.operationId)
+              throw new Error('Task operation changed during dispatch');
+          } else if (continueTopicId) {
             await taskTopicModel.updateStatus(task.id, continueTopicId, 'running');
             await taskTopicModel.updateOperationId(task.id, continueTopicId, result.operationId);
             await taskModel.updateCurrentTopic(task.id, continueTopicId);
@@ -567,6 +685,20 @@ export class TaskRunnerService {
         taskIdentifier: task.identifier,
       };
     } catch (error) {
+      if (boundOperationId && boundTopicId && !runAccepted) {
+        await this.taskTopicModel
+          .updateStatus(
+            task.id,
+            boundTopicId,
+            resolveFailedRunStatus(error instanceof Error ? error.message : undefined),
+            {
+              reportedOperationId: boundOperationId,
+            },
+          )
+          .catch((settleError) => {
+            log('runTask: failed to settle refused startup: %O', settleError);
+          });
+      }
       // The run never started on the requested device, so its retarget must
       // not outlive it: a later plain continuation would otherwise be routed
       // there while the task still pins its own machine.
@@ -583,7 +715,9 @@ export class TaskRunnerService {
         }
       }
 
-      if (weSetRunning) {
+      // A live accepted run owns its lifecycle even when bookkeeping fails.
+      // Pausing it here would make a dependency/Goal start a second attempt.
+      if (weSetRunning && !runAccepted) {
         try {
           const failedTask = await this.taskModel.findById(taskId);
           if (failedTask && failedTask.status === 'running') {
@@ -595,9 +729,21 @@ export class TaskRunnerService {
             //). Non-automation (ad-hoc / dependency) tasks keep
             // the legacy pause-for-attention behavior.
             if (failedTask.automationMode) {
-              await this.taskModel.updateStatus(failedTask.id, 'scheduled', { error: errorText });
+              await this.taskModel.updateStatusIfCurrent(
+                failedTask.id,
+                'running',
+                'scheduled',
+                { error: errorText },
+                runStartedAt,
+              );
             } else {
-              await this.taskModel.updateStatus(failedTask.id, 'paused', { error: errorText });
+              await this.taskModel.updateStatusIfCurrent(
+                failedTask.id,
+                'running',
+                'paused',
+                { error: errorText },
+                runStartedAt,
+              );
             }
           }
         } catch {
@@ -650,7 +796,8 @@ export class TaskRunnerService {
       // An archived dependent stays idle; restoring it leaves it ready to run.
       if (task.archivedAt) continue;
       if (await this.shouldHoldForCheckpoint(task)) {
-        await this.taskModel.updateStatus(task.id, 'paused');
+        const held = await this.taskModel.updateStatusIfCurrent(task.id, task.status, 'paused');
+        if (!held) continue;
         result.paused.push(task.identifier);
         result.pausedTasks!.push({ id: task.id, identifier: task.identifier });
         continue;
@@ -662,12 +809,18 @@ export class TaskRunnerService {
         result.startedTasks!.push({ id: task.id, identifier: task.identifier });
       } catch (error) {
         // Archived after discovery: the runner refused it, nothing failed.
-        if (error instanceof TRPCError && error.code === 'PRECONDITION_FAILED') continue;
+        if (
+          error instanceof TRPCError &&
+          (error.code === 'PRECONDITION_FAILED' || error.code === 'CONFLICT')
+        )
+          continue;
         const message = error instanceof Error ? error.message : 'Failed to start task';
         log('cascadeOnCompletion: runTask failed for %s: %s', task.identifier, message);
         // Best-effort: mark as paused so the user can see why it didn't run.
         try {
-          await this.taskModel.updateStatus(task.id, 'paused', { error: message });
+          await this.taskModel.updateStatusIfCurrent(task.id, task.status, 'paused', {
+            error: message,
+          });
         } catch {
           /* ignore — surfaced via failed list */
         }

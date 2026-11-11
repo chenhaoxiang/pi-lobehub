@@ -25,11 +25,12 @@ import { collectStrandedDependents, GOAL_ACCEPTANCE_TASK_TITLE } from '../decide
 import { classifyGoalFailure } from '../failureClass';
 import { answeredProblem, GoalManagerService, problemKey } from '../manager';
 import { GoalSupervisorService } from '../supervisor';
+import { CONFIRM_REWORK_SCOPE, confirmReworkScope, startedReworkDependents } from './rework';
 import type { GoalServiceContext } from './types';
 import { GOAL_ENDED_STATUSES } from './utils';
 
 /** A Goal whose delivery the owner can still send back for rework. */
-const REOPENABLE_GOAL_STATUSES = new Set(['achieved', 'running']);
+const REOPENABLE_GOAL_STATUSES = new Set(['achieved', 'running', 'review']);
 
 /**
  * What answering a gate does to the Task it was opened for. The coordinator's
@@ -154,11 +155,20 @@ export const decide = async (
       message: 'Revising the recipe needs a correction',
     });
   }
+  if (optionId === CONFIRM_REWORK_SCOPE && !resolution?.trim()) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Confirm which downstream results will be reworked or reused before resuming.',
+    });
+  }
   const chosen = decision.options?.find((option) => option.id === optionId);
   const incoming = graph.edges.find(
     (edge) => edge.targetNodeId === decision.nodeId && edge.kind === 'leads_to',
   );
   const source = incoming && graph.nodes.find((node) => node.id === incoming.sourceNodeId);
+  if (optionId === CONFIRM_REWORK_SCOPE && source?.taskId) {
+    return confirmReworkScope(ctx, graph, source.id, source.taskId, decisionId, resolution!.trim());
+  }
   // Retiring takes the unfinished dependents along, so the answer only stands
   // for the set the person was shown. A dependent added while the gate waited,
   // or an option that never listed them, gets the gate rewritten and asked
@@ -316,12 +326,9 @@ export const reopenForChanges = async (
   if (!goal || goal.archivedAt || !REOPENABLE_GOAL_STATUSES.has(goal.status)) return undefined;
   const graph = await ctx.requireGraph(goal.id);
   const node = graph.nodes.find(
-    (candidate) =>
-      candidate.kind === 'task' &&
-      candidate.taskId === taskId &&
-      candidate.title === GOAL_ACCEPTANCE_TASK_TITLE,
+    (candidate) => candidate.kind === 'task' && candidate.taskId === taskId,
   );
-  if (node?.status !== 'resolved') return undefined;
+  if (!node || !['active', 'resolved'].includes(node.status)) return undefined;
 
   const reason = comment ? `Changes requested: ${comment}` : 'Changes requested';
   // One transaction under the goal's row lock, so the reopen and an archive
@@ -333,6 +340,40 @@ export const reopenForChanges = async (
     const current = await goals.lockById(goal.id);
     if (!current || current.archivedAt || !REOPENABLE_GOAL_STATUSES.has(current.status))
       return false;
+
+    const scoped = ctx.inTransaction(tx);
+    const currentGraph = await scoped.requireGraph(goal.id);
+    const currentNode = currentGraph.nodes.find((item) => item.id === node.id);
+    if (!currentNode || !['active', 'resolved'].includes(currentNode.status)) return false;
+    await scoped.taskModel.lockForUpdate(taskId);
+    const currentTask = await scoped.taskModel.findById(taskId);
+    // Never reset a live/new attempt to backlog under its executor.
+    if (currentTask?.status !== 'completed') return false;
+    const affected = await startedReworkDependents(scoped, currentGraph, node.id);
+    if (affected.length) {
+      const list = affected
+        .map(
+          ({ node: affectedNode, task }) =>
+            `${task.identifier} — ${affectedNode.title} (${task.status})`,
+        )
+        .join('\n');
+      await scoped.openFailureDecisionLocked(currentGraph, node.id, taskId, reason, [], {
+        ask: {
+          diagnosis: `The rejected delivery has downstream work that already started. No task is automatically repeated, canceled or signed off.\n${list}`,
+          question: `Confirm the rework scope for ${currentTask.identifier}. First arrange which downstream Tasks must be reworked or may be reused through their existing Task controls; include that scope in your answer. An unsigned final review will run again after this Task. Already-running operations are not canceled automatically.\n${list}`,
+          options: [
+            {
+              id: CONFIRM_REWORK_SCOPE,
+              effect: 'retry',
+              label: 'Scope confirmed — rework the original Task',
+              description:
+                'Record the downstream rework/reuse scope before continuing. Leave this decision pending if the scope is not yet settled.',
+            },
+          ],
+        },
+      });
+      return true;
+    }
 
     // The runner refuses an archived Task, so the one being reworked comes back
     // even if it was archived on its own (or by an earlier sign-off).
@@ -354,10 +395,13 @@ export const reopenForChanges = async (
         },
       },
     });
-    if (current.status !== 'running') {
-      await goals.updateStatus(goal.id, 'running');
+    const nextStatus = currentGraph.decisions.some((item) => item.status === 'pending')
+      ? 'review'
+      : 'running';
+    if (current.status !== nextStatus) {
+      await goals.updateStatus(goal.id, nextStatus);
       await graphModel
-        .recordGoalStatus(goal.id, current.status, 'running', reason)
+        .recordGoalStatus(goal.id, current.status, nextStatus, reason)
         .catch((error) => console.error('[GoalService] failed to record goal status:', error));
     }
     return true;

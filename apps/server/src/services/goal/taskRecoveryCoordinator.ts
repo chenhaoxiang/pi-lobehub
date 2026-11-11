@@ -174,6 +174,7 @@ export class TaskRecoveryCoordinator {
 
     try {
       const run = await new TaskRunnerService(this.db, this.userId, this.workspaceId).runTask({
+        goalClaimStartedAt: claimed.startedAt!,
         maxSteps: resolveTaskMaxSteps(goal),
         taskId: task.id,
         trigger: 'goal',
@@ -192,8 +193,18 @@ export class TaskRecoveryCoordinator {
       // We own the claim, so nothing else will put the task back.
       await (
         deviceUnavailable
-          ? parkDeviceUnavailableDispatch(taskModel, current, message)
-          : taskModel.updateStatusIfCurrent(task.id, 'running', 'paused', { error: current.error })
+          ? parkDeviceUnavailableDispatch(
+              taskModel,
+              { ...current, startedAt: claimed.startedAt },
+              message,
+            )
+          : taskModel.updateStatusIfCurrent(
+              task.id,
+              'running',
+              'paused',
+              { error: current.error },
+              claimed.startedAt ?? undefined,
+            )
       ).catch((releaseError) => {
         log('task %s failed to release the recovery claim: %O', task.identifier, releaseError);
       });

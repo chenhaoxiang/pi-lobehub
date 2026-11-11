@@ -152,6 +152,18 @@ describe('TaskLifecycleService.onTopicComplete', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['done', 'error'])(
+    'ignores an old %s completion after the Task moved to another topic',
+    async (reason) => {
+      findById.mockResolvedValue(baseTask({ currentTopicId: 'topic-new' }));
+      await service.onTopicComplete({ ...createDoneParams(), reason });
+      expect(updateStatus).not.toHaveBeenCalled();
+      expect(updateStatusIfCurrent).not.toHaveBeenCalled();
+      expect(updateTopicStatus).not.toHaveBeenCalled();
+      expect(updateHeartbeat).not.toHaveBeenCalled();
+    },
+  );
+
   describe('reason=done', () => {
     it('automation task → status="scheduled" (not paused)', async () => {
       const task = baseTask({ automationMode: 'heartbeat' });

@@ -9,6 +9,7 @@ import {
   GOAL_CLARIFICATION_OPTION,
   GOAL_MACHINE_GATE_TITLE,
   GOAL_MANAGER_QUESTION_TITLE,
+  GOAL_REWORK_SCOPE_OPTION,
 } from '@lobechat/const/goal';
 import type { GoalDecisionOption } from '@lobechat/types';
 import { coordinatorReasonCopies } from '@lobechat/utils/goalCopy';
@@ -30,7 +31,8 @@ export type CoordinatorGateKind =
   | 'clarifyGoal'
   | 'fixSetup'
   | 'goalAcceptance'
-  | 'recoverTask';
+  | 'recoverTask'
+  | 'reworkScope';
 
 /** Only the options name a gate, so any decision shape that carries them will do. */
 type GateOptions = { options?: GoalDecisionOption[] | null };
@@ -44,6 +46,7 @@ export const coordinatorGateKind = (
   nodeTitle?: string | null,
 ): CoordinatorGateKind | undefined => {
   const ids = idsOf(decision);
+  if (ids.has(GOAL_REWORK_SCOPE_OPTION)) return 'reworkScope';
   // `fail` only ever appears on the terminal acceptance gate, which may also
   // offer `retire` — check it first.
   if (ids.has('retry') && ids.has('fail')) return 'goalAcceptance';
@@ -76,6 +79,9 @@ export const gateOptionLabelKey = (
   kind?: CoordinatorGateKind,
 ): string | undefined => {
   switch (option.id) {
+    case GOAL_REWORK_SCOPE_OPTION: {
+      return 'goalProcess.gate.option.confirmReworkScope';
+    }
     case 'fail': {
       return 'goalProcess.gate.option.fail';
     }
