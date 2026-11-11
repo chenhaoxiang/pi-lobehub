@@ -958,6 +958,7 @@
   "goalProcess.gate.recommended": "推荐",
   "goalProcess.gate.releaseReports": "向你汇报实验结果，等你决定",
   "goalProcess.gate.reworkScopeBasis": "修改反馈：{{comment}}\n相关任务：\n{{tasks}}",
+  "goalProcess.gate.reworkScopeBasisWithoutComment": "交付已被退回。相关任务：\n{{tasks}}",
   "goalProcess.gate.reworkScopeDescription": "先确认下游返工和复用范围，再重开原任务。不会自动重复执行其他下游任务。",
   "goalProcess.gate.reworkScopePlaceholder": "必填：哪些下游交付需要返工，哪些结果可以复用",
   "goalProcess.gate.reworkScopeQuestion": "请确认 {{task}} 的返工范围。先对需要返工的下游交付提出修改，再写明哪些结果可以复用。未签收的最终验收会重新执行；正在运行的任务不会自动停止。\n受影响任务：\n{{tasks}}",

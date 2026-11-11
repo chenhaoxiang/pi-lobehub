@@ -54,6 +54,12 @@ const REASON_PATTERNS: Array<{
     pattern:
       /^Changes requested: ([\s\S]*?)\n\nThe rejected delivery has downstream work that already started\.[^\n]*\n([\s\S]+)$/,
   },
+  {
+    key: 'goalProcess.gate.reworkScopeBasisWithoutComment',
+    params: ['tasks'],
+    pattern:
+      /^Changes requested\n\nThe rejected delivery has downstream work that already started\.[^\n]*\n([\s\S]+)$/,
+  },
   // Machine gates (see `machineRecovery.ts`): what broke, then what to change.
   {
     key: 'goalProcess.gate.reason.setupWorkingDirectory',

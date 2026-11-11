@@ -23,6 +23,17 @@ describe('owner rework scope copy', () => {
     });
   });
 
+  it('localizes the basis when a rejection carries no comment', () => {
+    expect(
+      coordinatorReasonCopy(
+        'Changes requested\n\nThe rejected delivery has downstream work that already started. No task is automatically repeated.\nT-4 — Report (completed)',
+      ),
+    ).toEqual({
+      key: 'goalProcess.gate.reworkScopeBasisWithoutComment',
+      params: { tasks: 'T-4 — Report (completed)' },
+    });
+  });
+
   it('requires a scope note instead of offering an apparently optional continuation', () => {
     expect(gateAnswerProblem({ optionId: option.id })).toBe('scopeRequired');
     expect(gateAnswerProblem({ optionId: option.id, resolution: '  ' })).toBe('scopeRequired');

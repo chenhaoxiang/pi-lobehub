@@ -1,3 +1,4 @@
+import { buildCheckReviewOverlay } from '@lobechat/utils/verify/acceptanceReviewOverlay';
 import debug from 'debug';
 
 import { GoalModel } from '@/database/models/goal';
@@ -116,12 +117,19 @@ const instantiatePlan = async (
     if (holistic && (await new GoalModel(db, userId, workspaceId).findByGraphTask(params.taskId))) {
       const service = new AcceptanceService(db, userId, workspaceId);
       const { results, runs } = await service.loadRounds(acceptance.id);
+      const resultsById = new Map(results.map((result) => [result.id, result]));
+      const currentRoundIndex = runs.at(-1)?.roundIndex ?? 0;
       const previousPlan = buildAcceptanceCheckUnion(
         runs.map((run) => ({
           results: results.filter((result) => result.verifyRunId === run.id),
           run,
         })),
-      ).flatMap((check) => (check.planItem ? [{ ...check.planItem, id: check.id }] : []));
+      )
+        .filter((check) => {
+          const review = buildCheckReviewOverlay(check, resultsById, currentRoundIndex).userReview;
+          return review?.action !== 'accept' || review.stale;
+        })
+        .flatMap((check) => (check.planItem ? [{ ...check.planItem, id: check.id }] : []));
       if (previousPlan.length) {
         const retry = await runModel.ensureForOperation(params.operationId);
         await runModel.setPlan(retry.id, previousPlan);

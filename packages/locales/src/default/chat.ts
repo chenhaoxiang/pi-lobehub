@@ -2745,6 +2745,7 @@ export default {
   'goalProcess.gate.option.confirmReworkScope': 'Confirm scope and rework the original task',
   'goalProcess.gate.reworkScopeQuestion':
     'Confirm the rework scope for {{task}}. Request changes on downstream deliveries that must be reworked, then record which results can be reused. The unsigned final review will run again. Running operations are not stopped automatically.\nAffected tasks:\n{{tasks}}',
+  'goalProcess.gate.reworkScopeBasisWithoutComment': 'Changes requested. Related tasks:\n{{tasks}}',
   'goalProcess.gate.reworkScopeBasis': 'Changes requested: {{comment}}\nRelated tasks:\n{{tasks}}',
   'goalProcess.gate.reworkScopeDescription':
     'Reopen the original task only after the downstream scope is settled. Other downstream tasks are not automatically repeated.',

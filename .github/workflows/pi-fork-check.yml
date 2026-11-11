@@ -59,7 +59,7 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund --prefix tmp/workspace-ci-tools pnpm@12.4.1 @oven/bun-linux-x64@1.4.4
           echo "$GITHUB_WORKSPACE/tmp/workspace-ci-tools/node_modules/@oven/bun-linux-x64/bin" >> "$GITHUB_PATH"
       - name: Install root workspace only (no CLI, credentials or release scripts)
-        run: node tmp/workspace-ci-tools/node_modules/pnpm/bin/pnpm.cjs install --ignore-scripts --child-concurrency=1 --network-concurrency=4
+        run: node tmp/workspace-ci-tools/node_modules/pnpm/bin/pnpm.mjs install --ignore-scripts --child-concurrency=1 --network-concurrency=4
       - name: Check Task, Goal, ownership, verification and rework regressions
         run: >-
           node node_modules/vitest/vitest.mjs run --project server --maxWorkers=3
@@ -78,6 +78,7 @@ jobs:
           apps/server/src/services/verify/__tests__/acceptanceTaskLifecycle.test.ts
           apps/server/src/services/verify/__tests__/acceptanceDecision.test.ts
           apps/server/src/services/verify/__tests__/acceptanceActor.test.ts
+          apps/server/src/services/verify/__tests__/acceptanceSettledCheck.test.ts
           apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
           apps/server/src/services/verify/__tests__/carryForward.db.test.ts
       - name: Check rework-scope copy and required user guidance

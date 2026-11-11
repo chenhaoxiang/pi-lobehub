@@ -4,11 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { getTestDB } from '@/database/core/getTestDB';
 import { AcceptanceModel } from '@/database/models/acceptance';
+import { AgentOperationModel } from '@/database/models/agentOperation';
 import { TaskModel } from '@/database/models/task';
+import { VerifyCheckResultModel } from '@/database/models/verifyCheckResult';
 import { VerifyRunModel } from '@/database/models/verifyRun';
 import { dispatchAcceptanceRepair } from '@/server/routers/lambda/_helpers/acceptanceRepairDispatch';
 import { TaskRunnerService } from '@/server/services/taskRunner';
 import { AcceptanceService } from '@/server/services/verify/acceptanceService';
+import { instantiateVerifyPlanOnStart } from '@/server/services/verify/planInstantiation';
 
 import { registerGoalServiceTestCleanup } from '../../testUtils';
 import { GoalService } from '../index';
@@ -140,6 +143,64 @@ describe('Goal rework belongs to the exact responsible Task', () => {
     expect((await model.findById(terminal.taskId!))?.status).toBe('backlog');
     expect((await runs.findById(oldRound.id))?.status).toBe('passed');
     expect(await runs.listByAcceptance(acceptance.id)).toHaveLength(2);
+  });
+
+  it('preserves accepted checklist evidence while renewing only the remaining final checks', async () => {
+    const { service, graph, terminal, decision } = await openScope();
+    const acceptanceModel = new AcceptanceModel(db, owner);
+    const acceptance = (await acceptanceModel.findBySubject('task', terminal.taskId!))!;
+    const runs = new VerifyRunModel(db, owner);
+    const results = new VerifyCheckResultModel(db, owner);
+    const old = await runs.create({
+      acceptanceId: acceptance.id,
+      roundIndex: 1,
+      status: 'passed',
+      planConfirmedAt: new Date(),
+      plan: ['keep-check', 'open-check'].map((id, index) => ({
+        id,
+        index,
+        title: id,
+        required: true,
+        onFail: 'manual' as const,
+        verifierType: 'program' as const,
+        verifierConfig: {},
+      })),
+    });
+    for (const item of old.plan!) {
+      await results.create({
+        checkItemId: item.id,
+        checkItemTitle: item.title,
+        required: true,
+        status: 'passed',
+        verdict: 'passed',
+        verifierType: 'program',
+        verifyRunId: old.id,
+      });
+    }
+    const delivery = new AcceptanceService(db, owner);
+    await acceptanceModel.updateStatus(acceptance.id, 'delivered');
+    await delivery.reviewChecks(acceptance.id, {
+      action: 'accept',
+      checkItemIds: [old.plan![0].sourceCriterionId ?? old.plan![0].id],
+    });
+    await service.decide(
+      graph.goal.id,
+      decision.id,
+      'confirm_rework_scope',
+      'Keep the accepted criterion and its evidence; renew the remaining check after source rework.',
+    );
+    const operationId = 'op-partially-signed-final-rework';
+    await new AgentOperationModel(db, owner).recordStart({ operationId, taskId: terminal.taskId });
+    await instantiateVerifyPlanOnStart(db, owner, { operationId, taskId: terminal.taskId! });
+    const renewed = await runs.findByOperation(operationId);
+    expect(renewed?.acceptanceId).toBe(acceptance.id);
+    expect(renewed?.plan).toHaveLength(1);
+    expect(renewed?.plan?.[0].title).toBe('open-check');
+    expect(
+      (await results.listByRun(old.id)).find((r) => r.checkItemTitle === 'keep-check')
+        ?.userDecision,
+    ).toBe('accepted');
+    expect((await runs.findById(old.id))?.plan).toEqual(old.plan);
   });
 
   it('keeps a second rejection handoff while another scope gate holds the Goal', async () => {

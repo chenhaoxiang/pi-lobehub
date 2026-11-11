@@ -167,7 +167,7 @@ export const requeueFinalReview = async (
     const runs = new VerifyRunModel(ctx.db, ctx.userId, ctx.workspaceId);
     const previous = (await runs.listByAcceptance(acceptance.id)).at(-1);
     if (!previous || !isDraftVerifyRun(previous)) {
-      const waiting = await runs.create({ plan: previous?.plan ?? [] });
+      const waiting = await runs.create({ plan: [] });
       await ctx.acceptanceService.attachPolicyRun(waiting.id, acceptance.id);
     }
   }
