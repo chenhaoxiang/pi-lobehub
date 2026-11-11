@@ -91,4 +91,4 @@ jobs:
         working-directory: packages/database
         run: node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 --silent='passed-only' src/models/__tests__/task.runClaim.test.ts src/models/__tests__/taskTopic.takeOver.test.ts src/models/__tests__/taskTopic.reopenSettledRun.test.ts
       - name: Check application and new regression types
-        run: bun run type-check && bunx --no-install tsrs --noEmit -p .github/scripts/piTaskGoalTypes.json --checkers 4
+        run: bun run type-check && node_modules/.bin/tsrs --noEmit -p .github/scripts/piTaskGoalTypes.json --checkers 4
