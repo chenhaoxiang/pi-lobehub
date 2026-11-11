@@ -6,6 +6,10 @@ import { TRPCError } from '@trpc/server';
 import { TaskModel } from '@/database/models/task';
 import { TaskArchiveModel } from '@/database/models/taskArchive';
 import { VerifyRunModel } from '@/database/models/verifyRun';
+import {
+  assertTaskAcceptanceHasRemainingChecks,
+  TaskAcceptanceNeedsNewChecksError,
+} from '@/server/services/verify/taskPlanPreflight';
 
 import { GOAL_ACCEPTANCE_TASK_TITLE } from '../decideNextMove';
 import type { GoalServiceContext } from './types';
@@ -130,6 +134,17 @@ export const assertFinalReviewCanRework = async (
       message:
         'The final delivery is already signed off. Preserve that decision and arrange a follow-up Goal before resuming this change.',
     });
+  }
+  try {
+    await assertTaskAcceptanceHasRemainingChecks(
+      ctx.db,
+      ctx.userId,
+      terminal.taskId!,
+      ctx.workspaceId,
+    );
+  } catch (error) {
+    if (!(error instanceof TaskAcceptanceNeedsNewChecksError)) throw error;
+    throw new TRPCError({ code: 'PRECONDITION_FAILED', message: error.message });
   }
   const task = await ctx.taskModel.findById(terminal.taskId!);
   if (task?.status === 'running') {

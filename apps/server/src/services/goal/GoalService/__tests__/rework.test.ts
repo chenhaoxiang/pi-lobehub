@@ -9,12 +9,21 @@ import { TaskModel } from '@/database/models/task';
 import { VerifyCheckResultModel } from '@/database/models/verifyCheckResult';
 import { VerifyRunModel } from '@/database/models/verifyRun';
 import { dispatchAcceptanceRepair } from '@/server/routers/lambda/_helpers/acceptanceRepairDispatch';
+import { AiAgentService } from '@/server/services/aiAgent';
+import { TaskLifecycleService } from '@/server/services/taskLifecycle';
 import { TaskRunnerService } from '@/server/services/taskRunner';
 import { AcceptanceService } from '@/server/services/verify/acceptanceService';
 import { instantiateVerifyPlanOnStart } from '@/server/services/verify/planInstantiation';
 
 import { registerGoalServiceTestCleanup } from '../../testUtils';
 import { GoalService } from '../index';
+
+const planProbe = vi.hoisted(() => ({ generate: vi.fn() }));
+vi.mock('@/server/services/verify/planGenerator', () => ({
+  VerifyPlanGeneratorService: vi.fn(function () {
+    return { generateDraftPlan: planProbe.generate };
+  }),
+}));
 
 const db = await getTestDB();
 const owner = 'goal-task-rework-owner';
@@ -201,6 +210,84 @@ describe('Goal rework belongs to the exact responsible Task', () => {
         ?.userDecision,
     ).toBe('accepted');
     expect((await runs.findById(old.id))?.plan).toEqual(old.plan);
+  });
+
+  it('keeps all-checks-signed rework waiting for explicit new criteria without generating a replacement contract', async () => {
+    const { service, graph, model, terminal, decision } = await openScope();
+    const acceptanceModel = new AcceptanceModel(db, owner);
+    const acceptance = (await acceptanceModel.findBySubject('task', terminal.taskId!))!;
+    const runs = new VerifyRunModel(db, owner);
+    const results = new VerifyCheckResultModel(db, owner);
+    const old = await runs.create({
+      acceptanceId: acceptance.id,
+      roundIndex: 1,
+      status: 'passed',
+      planConfirmedAt: new Date(),
+      plan: [
+        {
+          id: 'signed-check',
+          index: 0,
+          title: 'Signed outcome',
+          required: true,
+          onFail: 'manual',
+          verifierType: 'program',
+          verifierConfig: {},
+        },
+      ],
+    });
+    await results.create({
+      checkItemId: 'signed-check',
+      required: true,
+      status: 'passed',
+      verdict: 'passed',
+      verifierType: 'program',
+      verifyRunId: old.id,
+    });
+    const delivery = new AcceptanceService(db, owner);
+    await acceptanceModel.updateStatus(acceptance.id, 'delivered');
+    await delivery.reviewChecks(acceptance.id, {
+      action: 'accept',
+      checkItemIds: [old.plan![0].sourceCriterionId ?? old.plan![0].id],
+    });
+    const run = vi.spyOn(TaskRunnerService.prototype, 'runTask');
+    await expect(
+      service.decide(
+        graph.goal.id,
+        decision.id,
+        'confirm_rework_scope',
+        'Reuse the signed evidence.',
+      ),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(
+      (await service.graph(graph.goal.id)).decisions.find((d) => d.id === decision.id)?.status,
+    ).toBe('pending');
+    expect((await model.findById(terminal.taskId!))?.status).toBe('completed');
+    expect(await runs.listByAcceptance(acceptance.id)).toHaveLength(1);
+    expect(run).not.toHaveBeenCalled();
+    const execute = vi.spyOn(AiAgentService.prototype, 'execAgent');
+    await expect(
+      new TaskRunnerService(db, owner).runTask({ taskId: terminal.taskId! }),
+    ).rejects.toMatchObject({ code: 'PRECONDITION_FAILED' });
+    expect(execute).not.toHaveBeenCalled();
+    planProbe.generate.mockClear();
+    await model.updateStatus(terminal.taskId!, 'running');
+    const operationId = 'op-defensive-all-signed';
+    await new AgentOperationModel(db, owner).recordStart({ operationId, taskId: terminal.taskId });
+    await instantiateVerifyPlanOnStart(db, owner, { operationId, taskId: terminal.taskId! });
+    const blocked = await runs.findByOperation(operationId);
+    expect(blocked?.status).toBe('errored');
+    expect(blocked?.plan).toEqual([]);
+    expect(blocked?.planConfirmedAt).not.toBeNull();
+    expect((await results.listByRun(old.id))[0].userDecision).toBe('accepted');
+    expect(planProbe.generate).not.toHaveBeenCalled();
+    expect((await model.findById(terminal.taskId!))?.status).toBe('paused');
+    await new TaskLifecycleService(db, owner).onTopicComplete({
+      operationId,
+      taskId: terminal.taskId!,
+      taskIdentifier: 'T-final',
+      reason: 'done',
+    });
+    expect((await model.findById(terminal.taskId!))?.status).toBe('paused');
   });
 
   it('keeps a second rejection handoff while another scope gate holds the Goal', async () => {

@@ -1,3 +1,4 @@
+import { VERIFICATION_UNJUDGEABLE_ERROR } from '@lobechat/const/goal';
 import { buildCheckReviewOverlay } from '@lobechat/utils/verify/acceptanceReviewOverlay';
 import debug from 'debug';
 
@@ -119,17 +120,31 @@ const instantiatePlan = async (
       const { results, runs } = await service.loadRounds(acceptance.id);
       const resultsById = new Map(results.map((result) => [result.id, result]));
       const currentRoundIndex = runs.at(-1)?.roundIndex ?? 0;
-      const previousPlan = buildAcceptanceCheckUnion(
+      const historicalChecks = buildAcceptanceCheckUnion(
         runs.map((run) => ({
           results: results.filter((result) => result.verifyRunId === run.id),
           run,
         })),
-      )
+      );
+      const previousPlan = historicalChecks
         .filter((check) => {
           const review = buildCheckReviewOverlay(check, resultsById, currentRoundIndex).userReview;
           return review?.action !== 'accept' || review.stale;
         })
         .flatMap((check) => (check.planItem ? [{ ...check.planItem, id: check.id }] : []));
+      if (!previousPlan.length && historicalChecks.length) {
+        // An all-signed contract is not an absent contract. Keep an explicit
+        // non-passing round and human-attention state; never generate new ids.
+        const blocked = await runModel.ensureForOperation(params.operationId);
+        await runModel.setPlan(blocked.id, []);
+        await runModel.confirmPlan(blocked.id);
+        await runModel.updateStatus(blocked.id, 'errored');
+        await service.attachPolicyRun(blocked.id, acceptance.id);
+        await taskModel.updateStatusIfCurrent(params.taskId, 'running', 'paused', {
+          error: VERIFICATION_UNJUDGEABLE_ERROR,
+        });
+        return;
+      }
       if (previousPlan.length) {
         const retry = await runModel.ensureForOperation(params.operationId);
         await runModel.setPlan(retry.id, previousPlan);

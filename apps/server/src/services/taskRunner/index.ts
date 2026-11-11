@@ -24,6 +24,10 @@ import { resolveFailedRunStatus } from '@/server/services/goal/recoveryPolicy';
 import { resolveMissingTaskModelConfig } from '@/server/services/task/modelSnapshot';
 import { createTaskRunHooks } from '@/server/services/task/runHooks';
 import { readTaskSkillIds } from '@/server/services/userSkill';
+import {
+  assertTaskAcceptanceHasRemainingChecks,
+  TaskAcceptanceNeedsNewChecksError,
+} from '@/server/services/verify/taskPlanPreflight';
 
 import { buildTaskPrompt } from './buildTaskPrompt';
 import {
@@ -318,6 +322,24 @@ export class TaskRunnerService {
         },
         extraPrompt,
       );
+
+      if (acceptanceEnabled) {
+        try {
+          await assertTaskAcceptanceHasRemainingChecks(
+            this.db,
+            this.userId,
+            task.id,
+            this.workspaceId,
+          );
+        } catch (error) {
+          if (!(error instanceof TaskAcceptanceNeedsNewChecksError)) throw error;
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            cause: error,
+            message: error.message,
+          });
+        }
+      }
 
       if (task.status !== 'running') {
         // Conditional on the status read above: a task deleted (or started by
