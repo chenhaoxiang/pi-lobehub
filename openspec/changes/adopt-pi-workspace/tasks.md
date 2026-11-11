@@ -158,7 +158,7 @@ Task / PR /head，不提供网页任意文件 / 命令接口。经原 `taskProce
 真实原件为已接受的公开 PR6 / 精确 head、两项原 App 检查、原审查摘要 / 合前时间、
 真实 merge 与合后 workflow。经原 Vista 和已登录本机 Web 核到源码原件已核对，
 错误摘要降为未知、恢复后才恢复；Task 仍待办，不代签业务接受。Task 关联和观察
-run/session 别名是明确合成数据，不是 P5 原生模型业务样本。定向 server 12、app 25、
+run/session 别名是明确合成数据，不是 P5 原生模型业务样本。定向 server 14、app 25、
 类型与 lint 通过；源码独审、新 head CI、PR / 合并仍按本切片精确原件另核。P5 / P6
 和用户试用未由本片完成。
 

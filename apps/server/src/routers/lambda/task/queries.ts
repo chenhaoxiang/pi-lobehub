@@ -47,14 +47,7 @@ export const queriesRouter = router({
           ...current,
           ownerObservation: { status: 'unavailable' as const, reason: 'binding-mismatch' as const },
         };
-      return {
-        ...current,
-        ownerObservation,
-        gate:
-          ownerObservation.status === 'observed'
-            ? ('source-observed' as const)
-            : ('not-observed' as const),
-      };
+      return { ...current, ownerObservation };
     }),
   currentUsage: taskProcedure
     .input(z.object({ taskId: z.string().min(1) }))

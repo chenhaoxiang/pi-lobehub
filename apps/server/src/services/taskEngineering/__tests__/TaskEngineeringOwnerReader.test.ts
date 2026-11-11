@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
-import { access, chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { format } from 'node:util';
 
 import type { TaskEngineeringPullRequest } from '@lobechat/types';
+import debug from 'debug';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TaskEngineeringOwnerReader } from '../TaskEngineeringOwnerReader';
@@ -178,6 +180,54 @@ describe('explicit local owner-reader host boundary', () => {
       status: 'observed',
       authorization: 'none',
     });
+  });
+
+  it('joins concurrent requests for one exact capability instead of forking duplicate original reads', async () => {
+    const marker = path.join(directory, 'original-read-count');
+    await writeReader(
+      source.replace(
+        'return { progress:',
+        'await (await import("node:fs/promises")).appendFile(' +
+          JSON.stringify(marker) +
+          ', "one\\n"); await new Promise(r => setTimeout(r, 100)); return { progress:',
+      ),
+    );
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => new TaskEngineeringOwnerReader().read(taskId, linked)),
+    );
+    expect(results.every((result) => result.status === 'observed')).toBe(true);
+    expect(await readFile(marker, 'utf8')).toBe('one\n');
+  });
+
+  it('keeps opt-in diagnostics to stage and duration, excluding raw errors, paths and contract fields', async () => {
+    const previous = debug.disable();
+    const messages: string[] = [];
+    const logger = vi.spyOn(debug, 'log').mockImplementation((...args: any[]) => {
+      messages.push(format(...args));
+    });
+    debug.enable('lobe-task-engineering:owner-read');
+    try {
+      await writeReader(
+        'export async function readCodeStage(){throw Error("PRIVATE_ORIGINAL_TEXT");}',
+      );
+      expect(await new TaskEngineeringOwnerReader().read(taskId, linked)).toMatchObject({
+        status: 'unavailable',
+      });
+      const output = messages.join('\n');
+      expect(output).toContain('original-read');
+      expect(output).toContain('elapsedMs');
+      for (const privateValue of [
+        directory,
+        contractFile,
+        'PRIVATE_ORIGINAL_TEXT',
+        'bodySha256',
+        taskId,
+      ])
+        expect(output).not.toContain(privateValue);
+    } finally {
+      logger.mockRestore();
+      debug.enable(previous);
+    }
   });
 
   it('does not turn a null, foreign binding or authorizing payload into an observation', async () => {

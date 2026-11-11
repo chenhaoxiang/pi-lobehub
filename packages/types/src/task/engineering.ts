@@ -45,8 +45,8 @@ export type TaskEngineeringOwnerObservation =
 
 export interface TaskEngineeringSnapshot {
   checkLimit: number;
-  /** A source observation may include waiting/failure; it is never Task acceptance. */
-  gate: 'not-observed' | 'source-observed';
+  /** Legacy placeholder, never a verdict. Original-source status lives only in ownerObservation. */
+  gate: 'not-observed';
   observedAt: number;
   ownerObservation?: TaskEngineeringOwnerObservation;
   prLimit: number;
