@@ -3,6 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 
 import { TaskAttentionModel } from '@/database/models/taskAttention';
+import { TaskEngineeringModel } from '@/database/models/taskEngineering';
 import { TaskLabelModel } from '@/database/models/taskLabel';
 import { TaskUsageModel } from '@/database/models/taskUsage';
 import { UserModel } from '@/database/models/user';
@@ -13,6 +14,17 @@ import { groupListSchema, listSchema, resolveClosedAfter } from '../_helpers/tas
 import { idInput, taskProcedure } from './procedures';
 
 export const queriesRouter = router({
+  engineering: taskProcedure
+    .input(z.object({ taskId: z.string().min(1) }))
+    .query(async ({ input, ctx }) => {
+      const data = await new TaskEngineeringModel(
+        ctx.serverDB,
+        ctx.userId,
+        ctx.workspaceId ?? undefined,
+      ).read(input.taskId);
+      if (!data) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
+      return data;
+    }),
   currentUsage: taskProcedure
     .input(z.object({ taskId: z.string().min(1) }))
     .query(async ({ input, ctx }) => {

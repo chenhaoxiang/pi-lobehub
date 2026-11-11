@@ -1781,6 +1781,48 @@ export default {
   'selectedAgents': 'Selected agents',
   'floatingChatPanel.collapse': 'Collapse chat',
   'floatingChatPanel.expand': 'Expand chat',
+  'taskDetail.engineering.expand': 'Engineering records · read on demand',
+  'taskDetail.engineering.collapse': 'Engineering records · collapse',
+  'taskDetail.engineering.refresh': 'Refresh records',
+  'taskDetail.engineering.error': 'Engineering records could not be refreshed',
+  'taskDetail.engineering.accessUnavailable':
+    'This task cannot be read. Check your access from the task list.',
+  'taskDetail.engineering.stale':
+    'Keeping the last observation; it may have changed. Retry to read the original records.',
+  'taskDetail.engineering.retryHint':
+    'No engineering result was read. Retry; a failed read is not a missing or passing check.',
+  'taskDetail.engineering.loading': 'Reading explicitly linked records…',
+  'taskDetail.engineering.sourceHint':
+    'Only this task’s explicit public GitHub records and acceptance links are shown. CI is the last SCM observation, not necessarily live or the complete required-check set.',
+  'taskDetail.engineering.empty':
+    'No displayable public engineering original or explicit PR link was read. Link a PR in the original acceptance report; this view does not infer associations.',
+  'taskDetail.engineering.manual': 'Link only · original not verified',
+  'taskDetail.engineering.provider': 'Original SCM provider record',
+  'taskDetail.engineering.binding.task': 'Explicit Task binding',
+  'taskDetail.engineering.binding.acceptance': 'Task acceptance binding',
+  'taskDetail.engineering.head': 'Recorded head: {{sha}}',
+  'taskDetail.engineering.state': 'Recorded PR: {{state}}',
+  'taskDetail.engineering.ci': 'Recorded CI: {{status}}',
+  'taskDetail.engineering.unknown': 'Unknown',
+  'taskDetail.engineering.prState.open': 'Open',
+  'taskDetail.engineering.prState.closed': 'Closed',
+  'taskDetail.engineering.prState.merged': 'Merged',
+  'taskDetail.engineering.ciState.success': 'Successful',
+  'taskDetail.engineering.ciState.failure': 'Failed',
+  'taskDetail.engineering.ciState.pending': 'Pending',
+  'taskDetail.engineering.ciState.unknown': 'Unknown',
+  'taskDetail.engineering.headMismatch':
+    'The CI commit differs from the recorded PR head. Old checks are not shown as current.',
+  'taskDetail.engineering.noChecks': 'No checks for this head were read. This is not a pass.',
+  'taskDetail.engineering.checkSource': 'App {{appId}} · original {{status}} / {{conclusion}}',
+  'taskDetail.engineering.checkLimit':
+    'Showing the first {{limit}} of {{count}} recorded checks; this view is incomplete.',
+  'taskDetail.engineering.recordedAt': 'SCM record updated',
+  'taskDetail.engineering.prLimit':
+    'At most {{limit}} linked PRs are shown; this view is incomplete.',
+  'taskDetail.engineering.gateUnknown':
+    'Original owner Gate: not read. Task completion, successful CI or a merged PR is not business sign-off, deployment or installation.',
+  'taskDetail.engineering.observedAt': 'This read',
   'taskDetail.currentUsage.title': 'Recorded usage for the current run',
   'taskDetail.currentUsage.refresh': 'Refresh usage',
   'taskDetail.currentUsage.error': 'Usage could not be refreshed',

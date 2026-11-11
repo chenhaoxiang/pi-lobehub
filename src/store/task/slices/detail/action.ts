@@ -3,6 +3,7 @@ import type {
   TaskDetailActivity,
   TaskDetailActivityAuthor,
   TaskDetailData,
+  TaskEngineeringSnapshot,
 } from '@lobechat/types';
 import {
   clearTaskReposSelection,
@@ -36,7 +37,11 @@ import {
   buildOptimisticCommentActivity,
   buildOptimisticPropertyActivity,
 } from './optimisticActivity';
-import { taskCurrentUsageResource, taskDetailResource } from './projection';
+import {
+  taskCurrentUsageResource,
+  taskDetailResource,
+  taskEngineeringResource,
+} from './projection';
 import type { TaskDetailDispatch } from './reducer';
 import { findSubtaskParentId, taskDetailReducer } from './reducer';
 
@@ -109,6 +114,7 @@ export class TaskDetailSliceActionImpl {
   readonly #set: Setter;
   readonly #detail;
   readonly #usage;
+  readonly #engineering;
   readonly #reconciliations = new WeakMap<TaskDetailData, Promise<void>>();
   readonly #previous = new WeakMap<TaskDetailData, TaskDetailData | undefined>();
 
@@ -116,6 +122,24 @@ export class TaskDetailSliceActionImpl {
     void _api;
     this.#set = set;
     this.#get = get;
+    this.#engineering = createReplicaSlice(taskEngineeringResource, {
+      actionPrefix: 'taskEngineering',
+      fetcher: (id) => taskService.getEngineering(id),
+      effects: {
+        onError: (error, id) => {
+          if (
+            (['NOT_FOUND', 'FORBIDDEN', 'UNAUTHORIZED'] as const).some((code) =>
+              isTrpcErrorCode(error, code),
+            )
+          )
+            this.#engineering.remove(id);
+        },
+      },
+      get,
+      set,
+      stateKey: 'taskEngineeringReplica',
+      view: recordLens<TaskStore, TaskEngineeringSnapshot>('taskEngineeringMap'),
+    });
     this.#usage = createReplicaSlice(taskCurrentUsageResource, {
       actionPrefix: 'taskCurrentUsage',
       fetcher: (id) => taskService.getCurrentUsage(id),
@@ -190,6 +214,7 @@ export class TaskDetailSliceActionImpl {
       this.#set({ taskRefIndex: {}, activeTaskId: undefined }, false, 'taskDetail/scopeChanged');
       this.#detail.ensureScope(scope);
       this.#usage.ensureScope(scope);
+      this.#engineering.ensureScope(scope);
     });
   }
 
@@ -734,6 +759,14 @@ export class TaskDetailSliceActionImpl {
       ]).catch(() => {});
     }
   };
+
+  /** Closed by default; reads existing records only, with no periodic source refresh. */
+  useFetchTaskEngineering = (taskId: string | undefined, enabled: boolean) =>
+    this.#engineering.useSync(taskId ?? '', {
+      enabled: !!taskId && enabled,
+      revalidateOnFocus: false,
+      refreshInterval: 0,
+    });
 
   useFetchCurrentTaskUsage = (
     taskId: string | undefined,
