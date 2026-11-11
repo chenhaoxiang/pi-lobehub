@@ -17,6 +17,11 @@ const activeTaskDetail = (s: TaskStoreState): TaskDetailData | undefined =>
 
 const activeTaskDatabaseId = (s: TaskStoreState) => activeTaskDetail(s)?.id;
 
+const activeTaskEngineering = (s: TaskStoreState) => {
+  const id = activeTaskDatabaseId(s);
+  return id ? s.taskEngineeringMap[id] : undefined;
+};
+
 const activeTaskCurrentUsage = (s: TaskStoreState) => {
   const id = activeTaskDatabaseId(s);
   return id ? s.taskCurrentUsageMap[id] : undefined;
@@ -192,6 +197,7 @@ export const taskDetailSelectors = {
   activeTaskCreatedByUserId,
   activeTaskDatabaseId,
   activeTaskCurrentUsage,
+  activeTaskEngineering,
   activeTaskModel,
   activeTaskDependencies,
   activeTaskDescription,

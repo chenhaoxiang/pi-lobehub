@@ -1,6 +1,14 @@
-import type { TaskCurrentUsage, TaskDetailData } from '@lobechat/types';
+import type { TaskCurrentUsage, TaskDetailData, TaskEngineeringSnapshot } from '@lobechat/types';
 
 import { defineReplica } from '@/libs/replica';
+
+/** Explicit engineering records stay an on-demand, memory-only observation. */
+export const taskEngineeringResource = defineReplica<string, TaskEngineeringSnapshot>({
+  key: (id) => id,
+  name: 'taskEngineering',
+  storage: 'memory',
+  version: 1,
+});
 
 /** Current-run metadata is an ephemeral read view, never a second usage ledger. */
 export const taskCurrentUsageResource = defineReplica<string, TaskCurrentUsage>({
