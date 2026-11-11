@@ -2,6 +2,7 @@ import type { TaskCompletedWindow } from '@lobechat/builtin-tool-task';
 import type {
   CheckpointConfig,
   TaskAutomationMode,
+  TaskEngineeringSnapshot,
   TaskInstructionSynthesis,
   TaskIntentAnalysis,
   TaskListFilter,
@@ -19,7 +20,8 @@ const goalModelProvider = () => systemAgentSelectors.goal(useUserStore.getState(
 class TaskService {
   // ── Queries ──
 
-  getEngineering = async (taskId: string) => lambdaClient.task.engineering.query({ taskId });
+  getEngineering = async (taskId: string): Promise<TaskEngineeringSnapshot> =>
+    lambdaClient.task.engineering.query({ taskId });
 
   getCurrentUsage = async (taskId: string) => lambdaClient.task.currentUsage.query({ taskId });
 

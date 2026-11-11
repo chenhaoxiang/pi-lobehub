@@ -26,6 +26,8 @@
     "../../packages/database/src/models/__tests__/taskEngineering.test.ts",
     "../../apps/server/src/routers/lambda/__tests__/integration/task.engineering.integration.test.ts",
     "../../src/store/task/slices/detail/action.engineering.test.ts",
+    "../../apps/server/src/services/taskEngineering/__tests__/TaskEngineeringOwnerReader.test.ts",
+    "../../src/features/AgentTasks/AgentTaskDetail/engineeringOwnerPresentation.test.ts",
     "../../packages/database/src/models/__tests__/taskUsage.test.ts",
     "../../packages/heterogeneous-agents/src/adapters/pi.usage.test.ts",
     "../../apps/server/src/routers/lambda/__tests__/integration/task.currentUsage.integration.test.ts",

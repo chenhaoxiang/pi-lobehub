@@ -24,11 +24,31 @@ export interface TaskEngineeringPullRequest {
   url: string;
 }
 
+/** A bounded original owner observation, never an acceptance/merge permission. */
+export type TaskEngineeringOwnerObservation =
+  | { status: 'unavailable'; reason: 'binding-mismatch' | 'not-configured' | 'source-unavailable' }
+  | {
+      status: 'observed';
+      source: 'pi-vista-original-reader';
+      sourceType: 'owner-gate' | 'repository-review';
+      scope: 'source-shared-delivery-only';
+      authorization: 'none';
+      readOnly: true;
+      repository: string;
+      pullRequest: number;
+      headSha: string;
+      observedAt: number;
+      phase: string;
+      waitReason: string;
+      nextAction: string;
+    };
+
 export interface TaskEngineeringSnapshot {
   checkLimit: number;
-  /** No prepared owner Gate readback has been connected by this read. */
-  gate: 'not-observed';
+  /** A source observation may include waiting/failure; it is never Task acceptance. */
+  gate: 'not-observed' | 'source-observed';
   observedAt: number;
+  ownerObservation?: TaskEngineeringOwnerObservation;
   prLimit: number;
   pullRequests: TaskEngineeringPullRequest[];
   source: 'existing-scm-and-acceptance-links';

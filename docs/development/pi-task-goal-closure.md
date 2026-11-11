@@ -6,7 +6,7 @@ status: active
 truth_mode: maintained
 created: 2026-11-11
 verified: 2026-11-11
-verification_scope: P3 deterministic Pi RPC and P4 current-run metadata, attention, bounded Pi usage and explicitly linked SCM observations with isolated database and authenticated localhost Web; Desk reuse disposition; no original owner Gate readback, real-model business acceptance, installation, production or persistent operation
+verification_scope: P3 deterministic Pi RPC; P4 bounded usage, attention, explicit SCM and original repository-review owner reads through verified Vista with authenticated localhost Web and isolated DB; no real-model business acceptance, daily Pi reload, installation, production or persistent operation
 ---
 
 # Task、Goal 与 Pi 的交付路径
@@ -14,9 +14,9 @@ verification_scope: P3 deterministic Pi RPC and P4 current-run metadata, attenti
 本页对应同一 Change `adopt-pi-workspace` 的 P3 及 P4 状态、关注与当前用量切片。
 用户已明确选择 Web 端：本轮以本机 Web / 后端与独立 Pi CLI 设备交付，不加入
 Electron 打包安装。LobeHub 继续拥有业务 Task、Goal、负责人、依赖和验收；Pi 继续
-执行原生运行，不另建任务库或调度器。P4 的既有 SCM 记录已有只读消费；原 owner
-Gate 原件接入、P5 真实模型业务验收与 P6 Desk 退出仍按计划验真，不从当前切片推导
-整项完成。本人试用暂缓，生产 / 正式发布不执行。
+执行原生运行，不另建任务库或调度器。P4 的既有 SCM 与原 owner 读口已在明确绑定的
+本机能力范围内接线；P5 真实模型业务验收与 P6 Desk 退出仍按计划验真，不从源码
+交付或原件观察推导整项完成。本人试用暂缓，生产 / 正式发布不执行。
 
 ## 身份与开工
 
@@ -175,7 +175,7 @@ Goal 失败轮次交回其协调器返工；周期 tick 的一次检查结果不
 实际图片由主执行者检查，缺少独立 acceptance-checker；代码独审、PR、CI 和合并仍须
 按本切片精确 head 绑定，不回填旧 P4 审查或绿灯。
 
-## P4：显式工程记录与未接入的 Gate
+## P4：显式工程记录与原 owner 只读读回
 
 工程记录默认折叠，展开才沿原 `taskProcedure` 的只读 `task.engineering` 读取。
 它消费原 SCM 提供方写入的 `scm_change_requests` 和本 Task 原 Acceptance 的显式 PR
@@ -197,11 +197,12 @@ Goal 失败轮次交回其协调器返工；周期 tick 的一次检查结果不
   如实显示无可展示原件，不为演示借用生产配置。视图只在内存中按身份隔离；初次失败、
   成功空态、后台旧观察与失去访问资格分别处理，关闭栏目停止读取。
 
-**Gate 原件尚未接入，状态保持 `not-observed`。** SCM 检查名、App ID、成功或合并
-都不是 Vista `prepareCodeOwnerReadback` 的替代证明。原 Vista 独立 owner reader 的
-`repositoryReview` 例外当前仍只适用于 Desk，未为本仓伪造 Gate、放宽例外或扫描私有
-审计正文。因此本切片只完成工程 PR / CI 最近观察，不能写成真实原 owner Gate 已验真，
-也不能由此推导业务签收、部署或安装；计划 5.4 的余项保留。
+PR7 当时仅完成上述原 SCM 消费，Gate 保持 `not-observed`，没有用几项绿灯冒充
+原 owner 原件。后续 Vista [PR75](https://github.com/chenhaoxiang/pi-vista/pull/75)
+沿其原 Meta Gate 正常合入 `4d63f3d`，合后 CI 成功：原 `repositoryReview` 读口精确
+增加本仓的独立 PR / 审查合同，不改变其他仓的 Meta Gate 路径，不伪造本仓不存在的
+Meta Gate。Web 的显式本机能力现可直接调用同一 `readCodeStage`，见下节；它只展示
+源码阶段原件，不接受模型生成的摘要或状态 JSON 代替真实读取。
 
 实际 localhost 观察将已选 PR6 及其精确 head 检查的两个固定公开 GitHub GET 结果，
 经原 SCM 写模型放入隔离 fixture，再显式绑定到合成 Task；另有仅手工关联的 PR5。
@@ -222,6 +223,53 @@ PR6 的合后 CI `43066683317` 两项成功，物理 `main` 已无损同步 `0a1
 报告的后续浏览故障已通过准确归属的隔离测试 Chrome 重启恢复；不改变原报告 / 用户
 决定，12 张内嵌图片均实际解码，5 项仍待用户签收。初次超时历史不改写成成功。
 
+### 本机原件能力的明确配置与边界
+
+本机 Web 后端可显式配置三项进程环境变量，默认均为空，未配置保持未知：
+
+- `PI_LOBE_CODE_OWNER_READER`：已验证 Vista 原 `scripts/pi-code-stage-reader.mjs`
+  的绝对路径。当前验证用支持本仓的 `4d63f3d` 同树源码，不默认更新日常 Pi observer。
+- `PI_LOBE_CODE_OWNER_READER_SHA256`：上述已核验入口文件的 SHA-256。入口须为普通
+  文件、不允许 symlink 或其他人可写，并且匹配指纹；指纹只约束代码完整性，不认证
+  任意插件 / 依赖图，也不是原件接受的替代证明。配置者必须选择已核验的受信代码。
+- `PI_LOBE_CODE_OWNER_CONTRACT`：原 owner 的既有私有合同文件，绝对路径、普通文件、
+  当前宿主用户持有且无组 / 其他人权限；真实文件只在受限 `keys-local/`。合同保持
+  Vista 原闭集结构；其 `binding.workRef` 明确为本仓 owner、`kind:task` 与当前 Task
+  数据库 ID，源码阶段与精确 head 齐备。此处没有新审批表或第二份验收库。
+
+页面 / API 只传 Task ID，不能传程序、模块路径、私有文件名、命令或原件正文。Task
+可见性先过原 `taskProcedure` / 模型校验，合同还必须匹配该 Task 已有的显式 PR /
+head。私有合同与入口每次最多读取 64KiB，拒绝目录、特殊文件与符号链接；文件经
+原件读取后再次比对，变化则保持未知。这里只是受信宿主接线，不宣称隔离恶意代码。
+
+宿主以固定 Node 程序调用同一原 reader，合同快照经 stdin 传递，不进命令行。只
+允许白名单运行环境，不转发模型 API key、GH token、`NODE_OPTIONS` 或业务 profile；
+`gh` 沿现有正常凭据入口读取已选择的公开仓。原 reader 保留公开可见性检查、完整
+CI 名称 / App、精确 PR /head/base/merge、合后 workflow / 包含关系与两次审查原件
+读取；宿主仍负责选取真正已审阅接受的原评论及完整要求，摘要不能创造接受权。
+
+每次最多原读口既有 8 / 10 个固定公开 GET，55 秒主动 abort、60 秒外层截止，
+stdout 上限 16KiB；无重试、无 Gate /merge/ CI / 部署执行。出站只保留原阶段、
+等待原因、下一步元数据、公开 PR/head、原件时间与 `authorization:none`，不带私有
+路径、合同、审查正文、原生 run/session ID 或真实凭据。等待、失败、未知也是观察，
+`source-observed` 不是通过或业务接受。页面默认折叠，只有显式查看 / 刷新才读取；
+关闭焦点 / 重连刷新、外部轮询及自动错误重试，仍复用原 replica / API / 任务详情。
+原件等待期间 Task 删除 / 私有范围变化或 PR/head 变化，响应再次核对并拒绝旧投影。
+
+实际验证采用原已接受的公开 PR6：精确 `f641f61d`、App15368 的两项原检查、原审查
+评论 `6802405443` 的真实全文摘要 / 作者 / 合前时间，以及 merge `0a1866d` 的
+`Pi Fork Check`。这些原件经真实 Vista reader / `gh` 与本机 Web 读取，不是 stub。
+Task 绑定仍为明确合成场景，私有合同的 run/session 是观察别名，不冒充业务原生执行。
+页面实际显示 “源码交付原件已核对”，原业务 Task 仍待办、不签收。故意改错本机固定
+审查摘要时，真实原读口降为未知；恢复精确摘要才恢复，未编辑远端评论或推导业务
+通过。没有默认扫描历史、生产 / 真实业务模型调用、日常 Pi reload 或用户软件安装。
+
+宿主文件 / 进程边界、合同 /head/ 访问资格变化、错误与闭集投影分别有回归：当前
+server 12（宿主 8、真实 DB /middleware 路由 4）、app 25（阶段文案 18、hook 7），
+应用与新测试类型、定向 lint 通过。原 Vista reader 53 回归与三 Node CI 属其原仓
+证据，不和本仓数量相加。浏览器 / 原始图片仍由主执行者检查，没有独立
+acceptance-checker；源码审查、PR 与合并按本切片精确 head 原件交付。
+
 ## Desk 来源、许可与实际处置
 
 本次对照来源为 `chenhaoxiang/pi-desk` 的 `bd36b07`，包括其原 owner 合同、
@@ -230,15 +278,15 @@ PR6 的合后 CI `43066683317` 两项成功，物理 `main` 已无损同步 `0a1
 本仓实现与回归独立编写，复用的是 LobeHub 已有 Pi adapter、消息持久化、Task /
 Operation、local-replica 和界面组件，不声称 “Desk 源码已经集成”。
 
-| 原能力 / 资产                                        | 当前处置                                             |
-| ---------------------------------------------------- | ---------------------------------------------------- |
-| 工作状态、阻塞、下一步与准确运行身份                 | 已在原 Task / Goal 消费，Desk 仅供语义对照，不双写   |
-| 需关注问题                                           | 复用原问题生命周期和现有关注入口，不迁第二审批中心   |
-| 当前运行四桶用量及缺失语义                           | 本片独立实现有界投影；不复制 Desk 的采集器或收据集合 |
-| Gate / CI 阶段摘要                                   | CI 已接原 SCM 观察，原 owner Gate 原件尚未接入       |
-| 旧 UsageLedger、配置和历史原件                       | 原地保留，不扫描 / 导入，不把新 UI 当作迁移完成      |
-| SwiftUI / AppKit、菜单栏特效、重复设置和可选 AI 助手 | 不迁，不为沉没成本继续扩张                           |
-| App /bridge 运行入口                                 | 未退出；P5、保全与在途安全满足后才按 P6 处理         |
+| 原能力 / 资产                                        | 当前处置                                               |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| 工作状态、阻塞、下一步与准确运行身份                 | 已在原 Task / Goal 消费，Desk 仅供语义对照，不双写     |
+| 需关注问题                                           | 复用原问题生命周期和现有关注入口，不迁第二审批中心     |
+| 当前运行四桶用量及缺失语义                           | 本片独立实现有界投影；不复制 Desk 的采集器或收据集合   |
+| Gate / CI 阶段摘要                                   | 原 SCM 与显式受信宿主的原 owner 读口已接线，非业务签收 |
+| 旧 UsageLedger、配置和历史原件                       | 原地保留，不扫描 / 导入，不把新 UI 当作迁移完成        |
+| SwiftUI / AppKit、菜单栏特效、重复设置和可选 AI 助手 | 不迁，不为沉没成本继续扩张                             |
+| App /bridge 运行入口                                 | 未退出；P5、保全与在途安全满足后才按 P6 处理           |
 
 所核 Desk 提交未见 LICENSE / COPYING / NOTICE 授权文件，根及 bridge package 也未
 声明 license；不能据公开仓或相同 owner 推断第三方分发许可，本片因此不搬运其代码。

@@ -85,6 +85,7 @@ jobs:
           apps/server/src/routers/lambda/__tests__/integration/task.engineering.integration.test.ts
           apps/server/src/routers/lambda/__tests__/integration/task.currentUsage.integration.test.ts
           apps/server/src/services/heterogeneousAgent/HeterogeneousPersistenceHandler
+          apps/server/src/services/taskEngineering
       - name: Check goal status, attention, rework copy and required user guidance
         run: >-
           node node_modules/vitest/vitest.mjs run --project app --maxWorkers=3

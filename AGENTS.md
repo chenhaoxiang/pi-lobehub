@@ -24,7 +24,11 @@ branches are read-only inputs, not this fork's deployment or installation channe
   path remains local Web/backend plus an independent Pi CLI device; do not add
   Electron packaging or installation to this batch. Reuse this same Change:
   P4 consumes explicit work/attention/
-  usage/engineering facts; P5 verifies real scoped samples; P6 may retire only
+  usage/engineering facts. Engineering original reads use the existing Vista
+  reader through explicit, fingerprint-pinned trusted local host configuration;
+  Web requests never supply source paths, executable code or a Gate verdict.
+  Observations remain source-only and non-authorising, not business sign-off.
+  P5 verifies real scoped samples; P6 may retire only
   owned Desk entries after replacement, data preservation and in-flight safety
   have actually been verified. Never remove Desk prematurely.
   Do not publish, deploy production, install the user-facing app now or
