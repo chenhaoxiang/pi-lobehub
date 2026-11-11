@@ -123,6 +123,10 @@ export class TaskModel {
     return rows.findByIds(this.ctx, ids);
   }
 
+  async findExecutionFactsByIds(ids: string[]) {
+    return rows.findExecutionFactsByIds(this.ctx, ids);
+  }
+
   async findAssigneesByIds(
     ids: string[],
   ): Promise<{ assigneeAgentId: string | null; id: string }[]> {

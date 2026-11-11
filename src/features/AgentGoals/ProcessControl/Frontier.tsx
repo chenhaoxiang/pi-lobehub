@@ -35,6 +35,7 @@ import {
   coordinatorReasonCopies,
   viewGateKind,
 } from './coordinatorCopy';
+import { goalExecutionCopyKey } from './goalExecutionState';
 import type { FrontierItem, GoalGraphView, GoalNodeView } from './goalGraphViewModel';
 import ReleaseGateEntry from './ReleaseGateEntry';
 import { TASK_HOLD_VISUALS, useQuotaResumeText } from './taskHold';
@@ -220,7 +221,10 @@ const AttemptLedger = memo<{ view: GoalNodeView }>(({ view }) => {
 
   return (
     <Flexbox gap={0}>
-      <span className={styles.label}>{t('goalProcess.attempts.title')}</span>
+      <span className={styles.label}>{t('goalProcess.coordinatorRecords.title')}</span>
+      <Text fontSize={12} type={'secondary'}>
+        {t('goalProcess.coordinatorRecords.hint')}
+      </Text>
       {view.attempts.map((attempt) => (
         <Flexbox
           horizontal
@@ -235,7 +239,7 @@ const AttemptLedger = memo<{ view: GoalNodeView }>(({ view }) => {
             style={{ flex: 'none', width: 60 }}
             type={'secondary'}
           >
-            {t('goalProcess.attempts.nth', { index: attempt.index })}
+            {t('goalProcess.coordinatorRecords.nth', { index: attempt.index })}
           </Text>
           <Text
             fontSize={12}
@@ -248,7 +252,7 @@ const AttemptLedger = memo<{ view: GoalNodeView }>(({ view }) => {
                   : 'secondary'
             }
           >
-            {t(`goalProcess.attempts.${attempt.outcome}` as const)}
+            {t(`goalProcess.coordinatorRecords.${attempt.outcome}` as any)}
           </Text>
           <AttemptReason reason={attempt.reason} />
         </Flexbox>
@@ -389,7 +393,7 @@ const GateLinks = memo<{
           type={'text'}
           onClick={onToggleLedger}
         >
-          {t('goalProcess.decision.attempts', { count: attempts })}
+          {t('goalProcess.coordinatorRecords.count', { count: attempts })}
         </Button>
       )}
       <AcceptanceChip view={subject} />
@@ -531,15 +535,18 @@ const FrontierRow = memo<{
         ? { color: 'warning', text: t('goalProcess.tag.stalled') }
         : item.kind === 'quota'
           ? { color: 'warning', text: t('goalProcess.tag.waitingQuota') }
-          : item.kind === 'done'
-            ? {
-                color: undefined,
-                text:
-                  node.status === 'resolved'
-                    ? t('goalProcess.tag.done')
-                    : t('goalProcess.tag.retired'),
-              }
-            : null;
+          : ['ready', 'waiting', 'paused', 'settling', 'unknown'].includes(item.kind) &&
+              view.executionState
+            ? { color: undefined, text: t(goalExecutionCopyKey(view.executionState) as any) }
+            : item.kind === 'done'
+              ? {
+                  color: undefined,
+                  text:
+                    node.status === 'resolved'
+                      ? t('goalProcess.tag.done')
+                      : t('goalProcess.tag.retired'),
+                }
+              : null;
 
   return (
     <Block
@@ -681,6 +688,11 @@ const Frontier = memo<FrontierProps>(({ actions, canEdit, graph, onSelect, plann
         {canEdit && <AddTaskButton onAdd={actions.addTask} />}
       </Flexbox>
 
+      {graph.nodes.some((view) => view.node.kind === 'task') && (
+        <Text fontSize={12} type={'secondary'}>
+          {t('goalProcess.execution.sourceHint')}
+        </Text>
+      )}
       {gateCards.map(({ category, item }) => (
         <GateCard
           actions={actions}

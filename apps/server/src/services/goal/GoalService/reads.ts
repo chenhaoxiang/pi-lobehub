@@ -14,20 +14,30 @@ import { AgentOperationModel } from '@/database/models/agentOperation';
 
 import { classifyRunFailure, QUOTA_RESET_MARGIN_MS } from '../recoveryPolicy';
 import { GoalReportStore } from '../reportStore';
+import { collectCurrentExecutions } from './currentExecutions';
 import type { GoalServiceContext } from './types';
 
 export const graph = async (ctx: GoalServiceContext, goalId: string) => {
   const graph = await ctx.requireGraph(goalId);
-  const [runHeartbeats, deliveredAt, quotaRetryAt, acceptances, assignees, spend, report] =
-    await Promise.all([
-      ctx.collectRunHeartbeats(graph),
-      ctx.collectDeliveredAt(graph),
-      ctx.collectQuotaWaits(graph),
-      ctx.collectAcceptances(graph),
-      ctx.collectAssignees(graph),
-      ctx.resolveSpend(graph),
-      new GoalReportStore(ctx.db, ctx.userId, ctx.workspaceId).state(graph),
-    ]);
+  const [
+    runHeartbeats,
+    deliveredAt,
+    quotaRetryAt,
+    acceptances,
+    assignees,
+    spend,
+    report,
+    executions,
+  ] = await Promise.all([
+    ctx.collectRunHeartbeats(graph),
+    ctx.collectDeliveredAt(graph),
+    ctx.collectQuotaWaits(graph),
+    ctx.collectAcceptances(graph),
+    ctx.collectAssignees(graph),
+    ctx.resolveSpend(graph),
+    new GoalReportStore(ctx.db, ctx.userId, ctx.workspaceId).state(graph),
+    collectCurrentExecutions(ctx, graph),
+  ]);
   // Numeric clauses read through the Goal's Widget subscriptions when bound, so
   // the page shows the same verdict the coordinator acts on.
   const metricCriteria = await ctx.evaluateMetricCriteria(graph);
@@ -36,6 +46,7 @@ export const graph = async (ctx: GoalServiceContext, goalId: string) => {
     acceptances,
     assignees,
     deliveredAt,
+    executions,
     metricCriteria,
     quotaRetryAt,
     report,

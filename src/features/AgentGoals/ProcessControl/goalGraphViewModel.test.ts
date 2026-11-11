@@ -94,6 +94,21 @@ const event = (
   taskId: null,
 });
 
+const recordedExecution = (
+  heartbeat: number,
+  started: number,
+): GoalGraphSnapshot['executions'] => ({
+  w1: {
+    observedAt: at(120),
+    taskId: 'task-1',
+    taskStatus: 'running',
+    topicId: 'topic-1',
+    topicStatus: 'running',
+    operationId: 'op-1',
+    operation: { id: 'op-1', status: 'running', startedAt: at(started), updatedAt: at(heartbeat) },
+  },
+});
+
 const snapshot = (partial: Partial<GoalGraphSnapshot>): GoalGraphSnapshot => ({
   decisions: [],
   edges: [],
@@ -182,6 +197,7 @@ describe('buildGoalGraphView', () => {
     // event early, which dropped the frontier row's live clock.
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(115, 115),
         events: [
           event('w1', 'activated', 115),
           event('w1', 'updated', 115, 'Attached Work version 704ace21'),
@@ -199,6 +215,7 @@ describe('buildGoalGraphView', () => {
   it('marks an active task stale once it outlives the operation lease', () => {
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(30, 30),
         events: [event('w1', 'activated', 30)],
         nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(30) })],
       }),
@@ -325,7 +342,7 @@ describe('buildGoalGraphView', () => {
     expect(view.byId.w6.acceptance).toEqual({ id: 'acc-6', status: 'verifying' });
   });
 
-  it('gives up on a delivery the coordinator itself would no longer wait for', () => {
+  it('keeps an aged delivery without execution originals unknown, not a claimed lost run', () => {
     // Past the coordinator's settle grace the verify run really is stuck, and
     // the honest reading flips back to lost.
     const view = buildGoalGraphView(
@@ -337,7 +354,11 @@ describe('buildGoalGraphView', () => {
       NOW,
     );
 
-    expect(view.byId.w1).toMatchObject({ isStale: true, isVerifying: false });
+    expect(view.byId.w1).toMatchObject({
+      isStale: false,
+      isVerifying: false,
+      executionState: 'unknown',
+    });
   });
 
   it('keeps a task running when the run operation heartbeat is fresh despite a quiet node row', () => {
@@ -346,6 +367,7 @@ describe('buildGoalGraphView', () => {
     // goes quiet. That must not read as "lost".
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(119, 30),
         events: [event('w1', 'activated', 30)],
         nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(30) })],
         runHeartbeats: { w1: at(119) },
@@ -361,6 +383,7 @@ describe('buildGoalGraphView', () => {
   it('keeps a fresh active task running, with the current attempt start for the clock', () => {
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(115, 115),
         events: [event('w1', 'activated', 115)],
         nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(115) })],
       }),
@@ -772,7 +795,10 @@ describe('isTroubledTaskNode', () => {
   // worth reviewing, so the drill-down goes to the original Task instead.
   it('flags a task that lost its heartbeat', () => {
     const view = buildGoalGraphView(
-      snapshot({ nodes: [node('w1', { status: 'active', updatedAt: at(0) })] }),
+      snapshot({
+        executions: recordedExecution(0, 0),
+        nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(0) })],
+      }),
       NOW,
     );
 
@@ -828,11 +854,12 @@ describe('isTroubledTaskNode', () => {
 });
 
 describe('isRunningNode', () => {
-  it('reads an active task as running', () => {
+  it('reads a matching active Operation as running', () => {
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(115, 110),
         events: [event('w1', 'activated', 110)],
-        nodes: [node('w1', { status: 'active', updatedAt: at(115) })],
+        nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(115) })],
       }),
       NOW,
     );
@@ -923,6 +950,7 @@ describe('hasReviewableResult', () => {
   it('never opens the result surface on a troubled task, even a stale delivered one', () => {
     const view = buildGoalGraphView(
       snapshot({
+        executions: recordedExecution(0, 0),
         events: [event('w1', 'activated', 30)],
         nodes: [node('w1', { status: 'active', taskId: 'task-1', updatedAt: at(0) })],
       }),

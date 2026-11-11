@@ -74,6 +74,8 @@ export const CELL_VISUAL: Record<BatchCellState, { color: string; icon: LucideIc
   human: { color: TASK_STATUS_VISUALS.paused.color, icon: HandIcon },
   running: { color: TASK_STATUS_VISUALS.running.color, icon: CircleDot },
   stale: { color: TASK_STATUS_VISUALS.backlog.color, icon: CircleSlash },
+  unknown: { color: TASK_STATUS_VISUALS.backlog.color, icon: CircleDashed },
+  waiting: { color: TASK_STATUS_VISUALS.scheduled.color, icon: TASK_STATUS_VISUALS.scheduled.icon },
 };
 
 const styles = createStaticStyles(({ css }) => ({

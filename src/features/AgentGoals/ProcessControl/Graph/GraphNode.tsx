@@ -14,6 +14,7 @@ import { shinyTextStyles } from '@/styles';
 import type { GoalGraphNodeKind } from '../../Experiments/model';
 import AssigneeProfileAvatar from '../AssigneeProfileAvatar';
 import { coordinatorNodeTitleKey } from '../coordinatorCopy';
+import { goalExecutionCopyKey } from '../goalExecutionState';
 import type { GoalNodeView } from '../goalGraphViewModel';
 import { KIND_COLOR, KIND_ICON } from '../shared';
 import { TASK_HOLD_VISUALS } from '../taskHold';
@@ -263,9 +264,20 @@ const useStateChip = (data: GraphNodeData): StateChip | null => {
   if (stale) return { ...TASK_HOLD_VISUALS.stalled, text: t('goalProcess.tag.stalled') };
   if (view.quotaRetryAt)
     return { ...TASK_HOLD_VISUALS.waitingQuota, text: t('goalProcess.tag.waitingQuota') };
+  if (node.kind === 'task' && node.status === 'active' && view.executionState && !running) {
+    return {
+      color: TASK_STATUS_VISUALS.backlog.color,
+      icon: TASK_STATUS_VISUALS.backlog.icon,
+      text: t(goalExecutionCopyKey(view.executionState) as any),
+    };
+  }
   // Running renders the same animated ring the frontier and home surfaces use.
   if (running)
-    return { color: TASK_STATUS_VISUALS.running.color, text: t('goalProcess.node.running') };
+    return {
+      color: TASK_STATUS_VISUALS.running.color,
+      text:
+        node.kind === 'task' ? t('goalProcess.execution.running') : t('goalProcess.node.running'),
+    };
   // The goal ended under this run: it was stopped, not still going.
   if (view.halted)
     return {
@@ -445,10 +457,10 @@ const GraphNodeView = memo<NodeProps>(({ data }) => {
                 </span>
               </Tooltip>
             )}
-            <Tooltip title={t('goalProcess.node.attemptsTooltip', { count: attempts })}>
+            <Tooltip title={t('goalProcess.coordinatorRecords.hint')}>
               <span className={styles.metric}>
                 <Icon icon={Repeat2} size={13} />
-                {attempts}
+                {t('goalProcess.coordinatorRecords.count', { count: attempts })}
               </span>
             </Tooltip>
             {view.artifacts.length > 0 && (

@@ -19,6 +19,8 @@ const goalModelProvider = () => systemAgentSelectors.goal(useUserStore.getState(
 class TaskService {
   // ── Queries ──
 
+  getPendingInteractions = async () => lambdaClient.task.pendingInteractions.query();
+
   find = async (id: string) => lambdaClient.task.find.query({ id });
 
   getDetail = async (id: string) => lambdaClient.task.detail.query({ id });

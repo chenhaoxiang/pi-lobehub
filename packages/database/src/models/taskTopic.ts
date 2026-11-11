@@ -517,6 +517,25 @@ export class TaskTopicModel {
       .where(and(inArray(taskTopics.taskId, taskIds), this.ownership()));
   }
 
+  /** One content-free run per Task, selected by its current topic, never by recency or status. */
+  async findCurrentByTaskIds(taskIds: string[]) {
+    if (taskIds.length === 0) return [];
+    return this.db
+      .select({
+        operationId: taskTopics.operationId,
+        status: taskTopics.status,
+        taskId: taskTopics.taskId,
+        topicId: taskTopics.topicId,
+        trigger: taskTopics.trigger,
+      })
+      .from(taskTopics)
+      .innerJoin(
+        tasks,
+        and(eq(tasks.id, taskTopics.taskId), eq(tasks.currentTopicId, taskTopics.topicId)),
+      )
+      .where(and(inArray(taskTopics.taskId, taskIds), this.ownership()));
+  }
+
   async findRunningByTaskIds(taskIds: string[]): Promise<TaskTopicItem[]> {
     if (taskIds.length === 0) return [];
 

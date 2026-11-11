@@ -1,5 +1,8 @@
+import type { TaskPendingInteractions } from '@lobechat/types';
+
 import { createReplicaSlice, recordLens, type ReplicaSyncResult } from '@/libs/replica';
 import { type HomeDailyBriefResponse, homeService } from '@/services/home';
+import { taskService } from '@/services/task';
 import { type TopicListItem, topicService } from '@/services/topic';
 import type { HomeStore } from '@/store/home/store';
 import type { StoreSetter } from '@/store/types';
@@ -11,6 +14,7 @@ import {
   homeDailyBriefResource,
   type HomeFeedParams,
   homeInboxTopicsResource,
+  homeTaskInteractionsResource,
 } from './projection';
 
 const n = setNamespace('homeInbox');
@@ -33,9 +37,18 @@ export const createHomeInboxSlice = (set: Setter, get: () => HomeStore, _api?: u
 export class HomeInboxActionImpl {
   readonly #dailyBrief;
   readonly #inboxTopics;
+  readonly #taskInteractions;
 
   constructor(set: Setter, get: () => HomeStore, _api?: unknown) {
     void _api;
+    this.#taskInteractions = createReplicaSlice(homeTaskInteractionsResource, {
+      actionPrefix: n('taskInteractions'),
+      fetcher: () => taskService.getPendingInteractions(),
+      get,
+      set,
+      stateKey: 'homeTaskInteractionsReplica',
+      view: recordLens<HomeStore, TaskPendingInteractions>('homeTaskInteractionsMap'),
+    });
     this.#inboxTopics = createReplicaSlice(homeInboxTopicsResource, {
       actionPrefix: n('inboxTopics'),
       // `withLastMessage` is what makes an unread row readable: the card shows what
@@ -73,6 +86,14 @@ export class HomeInboxActionImpl {
     );
     setTimeout(() => void this.#inboxTopics.revalidate(HOME_INBOX_KEY), PROMOTE_RECONCILE_DELAY);
   };
+
+  /** Reads only current task-bound Pi interaction locators, never calls a model. */
+  useFetchPendingTaskInteractions = (isLogin: boolean | undefined): ReplicaSyncResult =>
+    this.#taskInteractions.useSync(FEED_PARAMS, {
+      enabled: isLogin === true,
+      focusThrottleInterval: 1000,
+      refreshInterval: 15_000,
+    });
 
   /** Read the pairs with `homeInboxSelectors.dailyBrief`. */
   useFetchHomeDailyBrief = (isLogin: boolean | undefined): ReplicaSyncResult =>

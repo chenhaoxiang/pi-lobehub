@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { buildGoalGraphView } from '../goalGraphViewModel';
 import { batchGroupId, layoutBatch } from './batchLayout';
 import {
+  batchCellState,
   batchPlanTitleKey,
   buildBatchModel,
   findBatchGate,
@@ -93,11 +94,13 @@ const batchSnapshot = ({
   decisions = [],
   extraEdges = [],
   extraNodes = [],
+  executions,
   state,
 }: {
   decisions?: GoalGraphDecision[];
   extraEdges?: GoalGraphEdge[];
   extraNodes?: GoalGraphNode[];
+  executions?: GoalGraphSnapshot['executions'];
   state: Partial<GoalRolloutState>;
 }): GoalGraphSnapshot => {
   const base = [
@@ -112,6 +115,7 @@ const batchSnapshot = ({
   const contained = nodes.filter((n) => n.id !== 'problem' && n.id !== 'batch');
   return {
     decisions,
+    executions,
     edges: [
       edge('problem', 'batch', 'decomposes'),
       ...contained.map((n) => edge('batch', n.id, 'contains')),
@@ -239,9 +243,25 @@ describe('buildBatchModel', () => {
         extraEdges: [edge('p1r', 'p1', 'derived_from'), edge('a1', 'p1r', 'depends_on')],
         extraNodes: [
           node('r0', 'decision', 10, { status: 'resolved', title: GOAL_BATCH_RELEASE_TITLE }),
-          node('p1r', 'task', 20, { status: 'active', title: 'U1', updatedAt: at(59) }),
+          node('p1r', 'task', 20, {
+            status: 'active',
+            taskId: 'task-p1r',
+            title: 'U1',
+            updatedAt: at(59),
+          }),
         ],
         state: { planVersions: { '1': 2 }, probeNodeIds: ['p1r', 'p2'] },
+        executions: {
+          p1r: {
+            observedAt: at(60),
+            taskId: 'task-p1r',
+            taskStatus: 'running',
+            topicId: 'topic-p1r',
+            topicStatus: 'running',
+            operationId: 'op-p1r',
+            operation: { id: 'op-p1r', status: 'running', startedAt: at(20), updatedAt: at(59) },
+          },
+        },
       }),
       NOW,
     );
@@ -264,8 +284,19 @@ describe('buildBatchModel', () => {
   it('keeps the gate locked until every probe settled', () => {
     const snapshot = batchSnapshot({ state: {} });
     snapshot.nodes = snapshot.nodes.map((n) =>
-      n.id === 'p2' ? { ...n, status: 'active', updatedAt: at(59) } : n,
+      n.id === 'p2' ? { ...n, status: 'active', taskId: 'task-p2', updatedAt: at(59) } : n,
     );
+    snapshot.executions = {
+      p2: {
+        observedAt: at(60),
+        taskId: 'task-p2',
+        taskStatus: 'running',
+        topicId: 'topic-p2',
+        topicStatus: 'running',
+        operationId: 'op-p2',
+        operation: { id: 'op-p2', status: 'running', startedAt: at(5), updatedAt: at(59) },
+      },
+    };
     const model = buildBatchModel(buildGoalGraphView(snapshot, NOW), 'batch');
 
     expect(model.rounds[0].gate).toBe('locked');
@@ -360,6 +391,26 @@ describe('buildBatchModel', () => {
 });
 
 describe('unit states', () => {
+  it('does not turn a stale run or a machine wait into a request for human approval', () => {
+    const graph = buildGoalGraphView(
+      batchSnapshot({
+        extraNodes: [node('waiting-task', 'task', 10, { status: 'active', title: 'U3' })],
+        state: { massNodeIds: ['waiting-task'], phase: 'mass', waveIndex: 1 },
+      }),
+      NOW,
+    );
+    const view = graph.byId['waiting-task'];
+    view.isStale = true;
+    expect(batchCellState(view, new Set())).toBe('unknown');
+    view.isStale = false;
+    view.node.status = 'waiting';
+    expect(batchCellState(view, new Set())).toBe('waiting');
+    view.decision = { ...humanAnswer('waiting-task'), authority: 'agent', status: 'pending' };
+    expect(batchCellState(view, new Set())).toBe('waiting');
+    view.decision.authority = 'user';
+    expect(batchCellState(view, new Set())).toBe('human');
+  });
+
   it('reads a rejected unit as waiting on a person and only a retired one as superseded', () => {
     const graph = buildGoalGraphView(
       batchSnapshot({

@@ -10,10 +10,13 @@ import type {
   GoalNodeWorkVersionRelation,
   GoalReportState,
   GoalSpend,
+  GoalTaskExecution,
   WorkType,
 } from '@lobechat/types';
 import { experimentMembers } from '@lobechat/utils/goalGraph';
 import { isClosedByRetirement } from '@lobechat/utils/verify/acceptanceStatus';
+
+import { deriveGoalExecutionState, type GoalExecutionState } from './goalExecutionState';
 
 /**
  * Read model for the Goal process-control surface.
@@ -141,6 +144,9 @@ export interface GoalNodeView {
   /** Decision nodes only: what the decision asks of the person. */
   decisionCategory?: GoalDecisionCategory;
   dependsOn: string[];
+  /** Content-free originals for the Task and its exact current Operation. */
+  execution?: GoalTaskExecution;
+  executionState?: GoalExecutionState;
   /** Findings produced by this Task. */
   findings: GoalGraphNode[];
   /** Decision only: the Task this gate was opened for — its ledger is the case. */
@@ -151,7 +157,7 @@ export interface GoalNodeView {
    * reopen can pick it up, so the row must not keep claiming it is running.
    */
   halted?: boolean;
-  /** Latest liveness signal: node row update or the run operation's lease heartbeat. */
+  /** Current Operation heartbeat when present; otherwise a graph update, not a liveness claim. */
   heartbeatAt: Date;
   /** Decisions on this node a human already resolved. */
   humanTouches: GoalGraphDecision[];
@@ -215,6 +221,7 @@ export const hasReviewableResult = (view: GoalNodeView): boolean => {
  */
 export const isRunningNode = (view: GoalNodeView): boolean => {
   if (view.node.kind === 'problem') return false;
+  if (view.node.kind === 'task' && view.executionState !== 'running') return false;
   return view.node.status === 'active' && !view.isStale && !view.halted && !view.quotaRetryAt;
 };
 
@@ -224,7 +231,17 @@ const CLOSED_GOAL_STATUSES = new Set<string>(['achieved', 'canceled', 'failed'])
 const GOAL_ENDED_STATUSES = new Set<string>(['achieved', 'canceled']);
 
 export type FrontierItemKind =
-  'gate' | 'stale' | 'quota' | 'verifying' | 'running' | 'ready' | 'done';
+  | 'gate'
+  | 'stale'
+  | 'quota'
+  | 'verifying'
+  | 'running'
+  | 'ready'
+  | 'done'
+  | 'unknown'
+  | 'waiting'
+  | 'paused'
+  | 'settling';
 
 export interface FrontierItem {
   key: string;
@@ -361,11 +378,11 @@ export const buildGoalGraphView = (
     deliveredAt,
     edges,
     events,
+    executions,
     goal,
     nodes,
     quotaRetryAt: quotaRetryAtByNode,
     report,
-    runHeartbeats,
     spend,
     workVersions,
   } = snapshot;
@@ -448,15 +465,14 @@ export const buildGoalGraphView = (
       open.endedAt = goal.updatedAt;
       open.outcome = 'retired';
     }
-    const isRunningAttempt = live && open?.outcome === 'running';
-    // Liveness = the newer of the node row (moves on observations / status
-    // changes) and the run operation's lease heartbeat (refreshed ~90s while
-    // the agent works). Judging from the node row alone flags any long quiet
-    // stretch — a big tool call, the verify stage — as lost while the
-    // coordinator's reclaim path still sees a healthy lease.
-    const heartbeatAt = new Date(
-      Math.max(node.updatedAt.getTime(), runHeartbeats?.[node.id]?.getTime() ?? 0),
-    );
+    const execution =
+      node.taskId && executions?.[node.id]?.taskId === node.taskId
+        ? executions[node.id]
+        : undefined;
+    // Only the matching current Operation can supply a run heartbeat. A new
+    // graph observation must not freshen an old run's lease. The node timestamp
+    // remains available for graph history, never as native liveness evidence.
+    const heartbeatAt = new Date(execution?.operation?.updatedAt ?? node.updatedAt);
     // A delivered run contributes no heartbeat — its topic is `completed`, not
     // running — so liveness alone would call the verification window lost. That
     // window is where the goal is most informative, and it lasted up to an hour
@@ -470,10 +486,13 @@ export const buildGoalGraphView = (
     const acceptanceVerifying =
       acceptances?.[node.id]?.status === 'verifying' ||
       acceptances?.[node.id]?.status === 'repairing';
-    const isVerifying =
+    const verifyingCandidate =
       node.kind === 'task' &&
       live &&
       (acceptanceVerifying || (!!delivered && now - delivered.getTime() <= VERIFY_SETTLE_GRACE_MS));
+    const executionState =
+      node.kind === 'task' ? deriveGoalExecutionState(execution, verifyingCandidate) : undefined;
+    const isVerifying = executionState === 'verifying';
     // A usage window refused the run and the coordinator holds the Task until it
     // reopens. Its run has ended, so the heartbeat ages past the lease while
     // nothing is wrong — read as lost, it showed a failure badge on a Task that
@@ -482,6 +501,7 @@ export const buildGoalGraphView = (
     const quotaRetryAt =
       node.kind === 'task' && live && !isVerifying && quotaRetry ? new Date(quotaRetry) : undefined;
 
+    const recordedRunning = executionState === 'running';
     return {
       answers: supportsByFinding.get(node.id) ?? [],
       artifacts:
@@ -498,6 +518,8 @@ export const buildGoalGraphView = (
       decision: nodeDecisions.find((d) => d.status === 'pending'),
       ...(node.kind === 'decision' ? { decisionCategory: decisionCategoryOf(node) } : {}),
       dependsOn: dependsOn.get(node.id) ?? [],
+      ...(execution ? { execution } : {}),
+      ...(executionState ? { executionState } : {}),
       findings:
         node.kind === 'experiment'
           ? nodes.filter((item) => members.has(item.id) && item.kind === 'finding')
@@ -508,16 +530,17 @@ export const buildGoalGraphView = (
       isStale:
         node.kind === 'task' &&
         live &&
+        recordedRunning &&
         !isVerifying &&
         !quotaRetryAt &&
-        now - heartbeatAt.getTime() > lease,
+        now - (execution?.operation?.updatedAt.getTime() ?? heartbeatAt.getTime()) > lease,
       isVerifying,
       ...(halted ? { halted } : {}),
       node,
       producedBy: producedByFinding.get(node.id),
       ...(quotaRetryAt ? { quotaRetryAt } : {}),
       seq: node.kind === 'experiment' ? ++experimentSeq : node.kind === 'task' ? ++seq : undefined,
-      startedAt: isRunningAttempt ? open.startedAt : undefined,
+      startedAt: recordedRunning ? (execution?.operation?.startedAt ?? undefined) : undefined,
     };
   });
   const byId = Object.fromEntries(views.map((view) => [view.node.id, view]));
@@ -539,16 +562,32 @@ export const buildGoalGraphView = (
     if (node.status === 'active') {
       // Stopped by the goal ending: nothing can advance it until a reopen.
       if (goalClosed) continue;
+      if (view.executionState === 'ready' && view.blockers.length) {
+        blocked.push(view);
+        continue;
+      }
+      const state = view.executionState;
+      const kind: FrontierItemKind = view.isStale
+        ? 'stale'
+        : view.quotaRetryAt
+          ? 'quota'
+          : state === 'verifying'
+            ? 'verifying'
+            : state === 'running'
+              ? 'running'
+              : state === 'ready'
+                ? 'ready'
+                : state === 'paused'
+                  ? 'paused'
+                  : state === 'settled' || state === 'settling'
+                    ? 'settling'
+                    : state === 'unknown' || !state
+                      ? 'unknown'
+                      : 'waiting';
       frontier.push({
         key: node.id,
-        kind: view.isStale
-          ? 'stale'
-          : view.quotaRetryAt
-            ? 'quota'
-            : view.isVerifying
-              ? 'verifying'
-              : 'running',
-        rank: view.isStale ? 0 : 1,
+        kind,
+        rank: kind === 'stale' ? 0 : kind === 'ready' ? 2 : 1,
         view,
       });
       continue;
@@ -575,7 +614,10 @@ export const buildGoalGraphView = (
   frontier.sort((a, b) => a.rank - b.rank || b.view.node.priority - a.view.node.priority);
 
   return {
-    advanceable: frontier.length,
+    advanceable:
+      goal.status === 'running' && !decisions.some((decision) => decision.status === 'pending')
+        ? frontier.filter((item) => item.kind === 'ready').length
+        : 0,
     artifacts: [...artifactsByNode.values()]
       .flat()
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
