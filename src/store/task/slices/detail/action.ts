@@ -1,4 +1,9 @@
-import type { TaskDetailActivity, TaskDetailActivityAuthor, TaskDetailData } from '@lobechat/types';
+import type {
+  TaskCurrentUsage,
+  TaskDetailActivity,
+  TaskDetailActivityAuthor,
+  TaskDetailData,
+} from '@lobechat/types';
 import {
   clearTaskReposSelection,
   readTaskExecutionConfig,
@@ -31,7 +36,7 @@ import {
   buildOptimisticCommentActivity,
   buildOptimisticPropertyActivity,
 } from './optimisticActivity';
-import { taskDetailResource } from './projection';
+import { taskCurrentUsageResource, taskDetailResource } from './projection';
 import type { TaskDetailDispatch } from './reducer';
 import { findSubtaskParentId, taskDetailReducer } from './reducer';
 
@@ -103,6 +108,7 @@ export class TaskDetailSliceActionImpl {
   readonly #get: () => TaskStore;
   readonly #set: Setter;
   readonly #detail;
+  readonly #usage;
   readonly #reconciliations = new WeakMap<TaskDetailData, Promise<void>>();
   readonly #previous = new WeakMap<TaskDetailData, TaskDetailData | undefined>();
 
@@ -110,6 +116,24 @@ export class TaskDetailSliceActionImpl {
     void _api;
     this.#set = set;
     this.#get = get;
+    this.#usage = createReplicaSlice(taskCurrentUsageResource, {
+      actionPrefix: 'taskCurrentUsage',
+      fetcher: (id) => taskService.getCurrentUsage(id),
+      effects: {
+        onError: (error, id) => {
+          if (
+            (['NOT_FOUND', 'FORBIDDEN', 'UNAUTHORIZED'] as const).some((code) =>
+              isTrpcErrorCode(error, code),
+            )
+          )
+            this.#usage.remove(id);
+        },
+      },
+      get,
+      set,
+      stateKey: 'taskCurrentUsageReplica',
+      view: recordLens<TaskStore, TaskCurrentUsage>('taskCurrentUsageMap'),
+    });
     this.#detail = createReplicaSlice(taskDetailResource, {
       actionPrefix: 'taskDetail',
       // Persist canonical entries through the replica; applied responses also
@@ -131,6 +155,20 @@ export class TaskDetailSliceActionImpl {
               'taskDetail/instructionChanged',
             );
           }
+          const previous = this.#previous.get(detail);
+          if (
+            this.#get().taskCurrentUsageMap[id] &&
+            previous &&
+            (previous.status !== detail.status ||
+              previous.startedAt !== detail.startedAt ||
+              previous.updatedAt !== detail.updatedAt)
+          ) {
+            // Reconcile a final settlement / replacement even after the running poll stops.
+            // Replica error state stays visible in the usage section; do not fail the whole Task.
+            void this.#usage
+              .fetch(id, { fresh: true })
+              .catch(() => console.error('[taskUsage:refresh] Read unavailable'));
+          }
           const reconciliation = this.#reconcileRuns(detail);
           this.#reconciliations.set(detail, reconciliation);
           void reconciliation.catch((error) => console.error('[taskDetail:reconcile]', error));
@@ -151,6 +189,7 @@ export class TaskDetailSliceActionImpl {
     subscribeCacheScope((scope) => {
       this.#set({ taskRefIndex: {}, activeTaskId: undefined }, false, 'taskDetail/scopeChanged');
       this.#detail.ensureScope(scope);
+      this.#usage.ensureScope(scope);
     });
   }
 
@@ -695,6 +734,17 @@ export class TaskDetailSliceActionImpl {
       ]).catch(() => {});
     }
   };
+
+  useFetchCurrentTaskUsage = (
+    taskId: string | undefined,
+    isLogin: boolean | undefined,
+    running: boolean,
+  ) =>
+    this.#usage.useSync(taskId ?? '', {
+      enabled: !!taskId && isLogin === true,
+      focusThrottleInterval: 1000,
+      refreshInterval: running ? 15_000 : 0,
+    });
 
   useFetchTaskDetail = (taskRef?: string) => {
     const scope = cacheScope.use();

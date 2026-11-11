@@ -22,7 +22,12 @@
     "../../src/features/Portal/GoalMetric/taskRowState.test.ts",
     "../../src/features/GlobalApprovalNotification/usePendingTaskInteractions.test.ts",
     "../../src/features/GlobalApprovalNotification/usePendingGoalDecisions.test.ts",
-    "../../src/store/home/slices/inbox/action.taskInteractions.test.ts"
+    "../../src/store/home/slices/inbox/action.taskInteractions.test.ts",
+    "../../packages/database/src/models/__tests__/taskUsage.test.ts",
+    "../../packages/heterogeneous-agents/src/adapters/pi.usage.test.ts",
+    "../../apps/server/src/routers/lambda/__tests__/integration/task.currentUsage.integration.test.ts",
+    "../../src/store/task/slices/detail/action.currentUsage.test.ts",
+    "../../apps/server/src/services/heterogeneousAgent/HeterogeneousPersistenceHandler/__tests__/piUsage.db.test.ts"
   ],
   "references": [
     {

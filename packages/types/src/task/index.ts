@@ -7,6 +7,7 @@ export * from './attention';
 export * from './execution';
 export * from './label';
 export * from './listFilter';
+export * from './usage';
 
 // ── Task type aliases ──
 

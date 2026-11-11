@@ -1,8 +1,10 @@
 import type { TaskListItem, TaskParticipant } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
+import { z } from 'zod';
 
 import { TaskAttentionModel } from '@/database/models/taskAttention';
 import { TaskLabelModel } from '@/database/models/taskLabel';
+import { TaskUsageModel } from '@/database/models/taskUsage';
 import { UserModel } from '@/database/models/user';
 import { router } from '@/libs/trpc/lambda';
 import { resolveTaskOrThrow } from '@/server/services/task/utils';
@@ -11,6 +13,17 @@ import { groupListSchema, listSchema, resolveClosedAfter } from '../_helpers/tas
 import { idInput, taskProcedure } from './procedures';
 
 export const queriesRouter = router({
+  currentUsage: taskProcedure
+    .input(z.object({ taskId: z.string().min(1) }))
+    .query(async ({ input, ctx }) => {
+      const data = await new TaskUsageModel(
+        ctx.serverDB,
+        ctx.userId,
+        ctx.workspaceId ?? undefined,
+      ).readCurrent(input.taskId);
+      if (!data) throw new TRPCError({ code: 'NOT_FOUND', message: 'Task not found' });
+      return data;
+    }),
   pendingInteractions: taskProcedure.query(({ ctx }) =>
     new TaskAttentionModel(
       ctx.serverDB,

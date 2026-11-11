@@ -4,6 +4,7 @@ import { memo } from 'react';
 import TaskAcceptance from './TaskAcceptance';
 import TaskActivities from './TaskActivities';
 import TaskArtifacts from './TaskArtifacts';
+import { TaskCurrentUsage } from './TaskCurrentUsage';
 import TaskDetailAssignee from './TaskDetailAssignee';
 import { taskDetailLayoutStyles as styles } from './taskDetailLayoutStyles';
 import TaskDetailRunPauseAction from './TaskDetailRunPauseAction';
@@ -46,6 +47,7 @@ const TaskDetailSections = memo(() => {
         <TaskAcceptance />
         <TaskSubtasks />
         <TaskArtifacts />
+        <TaskCurrentUsage />
         <TaskActivities />
       </Flexbox>
     </div>

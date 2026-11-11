@@ -1781,6 +1781,32 @@ export default {
   'selectedAgents': 'Selected agents',
   'floatingChatPanel.collapse': 'Collapse chat',
   'floatingChatPanel.expand': 'Expand chat',
+  'taskDetail.currentUsage.title': 'Recorded usage for the current run',
+  'taskDetail.currentUsage.refresh': 'Refresh usage',
+  'taskDetail.currentUsage.error': 'Usage could not be refreshed',
+  'taskDetail.currentUsage.stale':
+    'Previously read values may have changed. Retry to check the current run.',
+  'taskDetail.currentUsage.retryHint':
+    'No usage result was read. Retry; an unavailable read is not zero usage.',
+  'taskDetail.currentUsage.accessUnavailable':
+    'Usage for this Task is unavailable. Return to Tasks to check the Task and access.',
+  'taskDetail.currentUsage.loading': 'Reading current-run usage…',
+  'taskDetail.currentUsage.input': 'Input (excluding cache)',
+  'taskDetail.currentUsage.output': 'Output (including reasoning)',
+  'taskDetail.currentUsage.cacheRead': 'Cache reads',
+  'taskDetail.currentUsage.cacheWrite': 'Cache writes',
+  'taskDetail.currentUsage.lowerBound': '≥ {{value}}',
+  'taskDetail.currentUsage.unsupported':
+    'The Pi usage source for this operation is not confirmed. No usage is inferred.',
+  'taskDetail.currentUsage.unavailable':
+    'Current-run Pi usage has not been collected. Unknown values are not zeros.',
+  'taskDetail.currentUsage.coverage':
+    '{{measured}} of {{observed}} sampled assistant records have all four buckets. Values are recorded lower bounds.',
+  'taskDetail.currentUsage.truncated':
+    'Only the first {{limit}} records of this operation were read; later records are omitted.',
+  'taskDetail.currentUsage.observed': 'Last read',
+  'taskDetail.currentUsage.sourceHint':
+    'Only explicitly linked Pi response records are included. Child runs, auxiliary calls and missing records are not covered. This is not a complete bill.',
   'globalApproval.collapse': 'Collapse',
   'globalApproval.dismiss': 'Dismiss',
   'globalApproval.dismissHint': 'Hide it here; it stays on Home',
@@ -3057,15 +3083,17 @@ export default {
   'goalProcess.lifecycle.note.retryAfterVerification':
     'Verification did not pass; the next attempt started automatically',
   'goalProcess.metricDetail.budget.controlTitle': 'Budget control',
-  'goalProcess.metricDetail.budget.perTaskEmpty': 'No run has been billed yet.',
+  'goalProcess.metricDetail.budget.perTaskEmpty': 'No Task run record is included yet.',
   'goalProcess.metricDetail.budget.perTaskTitle': 'Where it went',
   'goalProcess.metricDetail.budget.runsValue': '{{count}} runs',
   'goalProcess.metricDetail.budget.raiseNote':
     'Raising a cap is what restarts a goal the coordinator parked on its budget \u2014 it starts moving again on its own, no Resume needed. Leave a field empty to run uncapped.',
-  'goalProcess.metricDetail.budget.rounds': 'Rounds',
+  'goalProcess.metricDetail.budget.rounds': 'Task run records',
   'goalProcess.metricDetail.budget.saveFailed': 'Could not update the budget',
-  'goalProcess.metricDetail.budget.title': 'Cost',
-  'goalProcess.metricDetail.budget.totalCost': 'Spend',
+  'goalProcess.metricDetail.budget.title': 'Recorded budget usage',
+  'goalProcess.metricDetail.budget.sourceHint':
+    'Budget counters use recorded direct Task runs and goal supervision/management, including possible estimates. Unsettled, child and auxiliary usage may be missing. This is not a complete bill.',
+  'goalProcess.metricDetail.budget.totalCost': 'Recorded cost (estimated or reported)',
   'goalProcess.metricDetail.budget.uncapped': 'Uncapped',
   'goalProcess.metricDetail.duration.now': 'now',
   'goalProcess.metricDetail.duration.taskSpans': 'Task node spans',
@@ -3084,7 +3112,7 @@ export default {
   'goalProcess.metrics.liveness': 'Last activity',
   'goalProcess.metrics.rounds': 'Rounds',
   'goalProcess.metrics.roundsValue': '{{count}} rounds',
-  'goalProcess.metrics.spend': 'Spend',
+  'goalProcess.metrics.spend': 'Recorded cost (estimated or reported)',
   'goalProcess.metrics.uncapped': 'Uncapped',
   'goalProcess.node.blockers': 'Blocked by',
   'goalProcess.node.description': 'Description',

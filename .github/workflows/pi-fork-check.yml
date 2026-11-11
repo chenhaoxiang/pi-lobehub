@@ -82,6 +82,8 @@ jobs:
           apps/server/src/services/verify/__tests__/acceptanceSettledCheck.test.ts
           apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
           apps/server/src/services/verify/__tests__/carryForward.db.test.ts
+          apps/server/src/routers/lambda/__tests__/integration/task.currentUsage.integration.test.ts
+          apps/server/src/services/heterogeneousAgent/HeterogeneousPersistenceHandler
       - name: Check goal status, attention, rework copy and required user guidance
         run: >-
           node node_modules/vitest/vitest.mjs run --project app --maxWorkers=3
@@ -91,6 +93,9 @@ jobs:
           src/features/GlobalApprovalNotification
           src/store/home/slices/inbox/action.taskInteractions.test.ts
           src/store/home/slices/inbox/action.test.ts
+          src/store/task/slices/detail
+          src/store/task/selectors/detailSelectors.test.ts
+          src/features/AgentTasks/AgentTaskDetail
       - name: Check real database run claims and owner isolation
         working-directory: packages/database
         run: >-
@@ -101,5 +106,9 @@ jobs:
           src/models/__tests__/taskTopic.currentRun.test.ts
           src/models/__tests__/agentOperation.executionFacts.test.ts
           src/models/__tests__/taskAttention.test.ts
+          src/models/__tests__/taskUsage.test.ts
+      - name: Check Pi usage buckets and missing telemetry regressions
+        working-directory: packages/heterogeneous-agents
+        run: node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 src/adapters/pi.test.ts src/adapters/pi.usage.test.ts
       - name: Check application and new regression types
         run: bun run type-check && node_modules/.bin/tsrs --noEmit -p .github/scripts/piTaskGoalTypes.json --checkers 4

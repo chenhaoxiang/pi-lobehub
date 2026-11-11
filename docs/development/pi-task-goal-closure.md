@@ -6,15 +6,16 @@ status: active
 truth_mode: maintained
 created: 2026-11-11
 verified: 2026-11-11
-verification_scope: P3 deterministic Pi RPC and P4 current-run metadata plus original-interaction attention with isolated database and authenticated localhost Web observations; not real-model business acceptance, installation, production or persistent operation
+verification_scope: P3 deterministic Pi RPC and P4 current-run metadata, original-interaction attention and bounded current-Pi-usage projection with isolated database and authenticated localhost Web observations; Desk reuse disposition; not real-model business acceptance, installation, production or persistent operation
 ---
 
 # Task、Goal 与 Pi 的交付路径
 
-本页对应同一 Change `adopt-pi-workspace` 的 P3 及 P4 状态 / 关注切片。LobeHub
-继续拥有业务 Task、Goal、负责人、依赖和验收；Pi 继续执行原生运行，不另建任务库
-或调度器。P4 用量 / 工程事实、P5 真实模型业务验收、P6 Desk 退出仍按计划验真，
-不从当前切片推导整项完成。用户安装与本人试用暂缓，生产 / 正式发布不执行。
+本页对应同一 Change `adopt-pi-workspace` 的 P3 及 P4 状态、关注与当前用量切片。
+用户已明确选择 Web 端：本轮以本机 Web / 后端与独立 Pi CLI 设备交付，不加入
+Electron 打包安装。LobeHub 继续拥有业务 Task、Goal、负责人、依赖和验收；Pi 继续
+执行原生运行，不另建任务库或调度器。P4 工程事实、P5 真实模型业务验收、P6 Desk
+退出仍按计划验真，不从当前切片推导整项完成。本人试用暂缓，生产 / 正式发布不执行。
 
 ## 身份与开工
 
@@ -130,6 +131,70 @@ Goal 失败轮次交回其协调器返工；周期 tick 的一次检查结果不
 实际 Web 页面和必要图片由主执行者核验，未安排独立 acceptance-checker；独立代码
 审查、PR、CI 与合并以精确 head 原件为准，原 BLOCK 不回填为通过。Electron、移动端
 和完整键盘 / 辅助技术验收未在本切片执行。
+
+## P4：当前 Pi 用量不是完整账单
+
+- Pi 适配器只接受完整、非负安全整数的输入、输出、缓存读取、缓存写入四桶；
+  输入不含缓存，输出已含推理，不把推理再次相加。缺字段、负数、非整数、溢出
+  或矛盾合计不补零。SDK Responses 路径把缺失合计写为 `0`，该已核实哨兵按
+  四桶求和；非零合计必须吻合。真实四桶零值仍保留，但零目录价不作为免费账单。
+- 既有 `messages.usage` 是主来源，旧 `metadata.usage` 仅在整份主来源缺失时
+  整份回退；不逐字段混合，也不同时相加。持久层按原消息 ID 更新，重复回执不会
+  形成第二条计数。没有建立新的用量库、金额估算器或历史扫描。
+- 只读 `task.currentUsage` 按用户 / 工作区、Task 当前话题、准确 Operation、
+  `startedAt` 代际和 thread 取当前 Pi 主运行。分享访客、他人 Operation、旧话题、
+  其他 provider 及子运行不纳入；查询前后代际变化则整份样本失效。SQL 只投影六个
+  必要用量字段，不加载消息正文、工具参数、推理或任意 metadata。
+- 每次最多观察前 500 条匹配助手消息；超限明确标不完整。只累加具有完整四桶的
+  记录，缺回合说明覆盖不足。未采集显示 `--`，已记录显示 `≥` 下界及上次读取时间，
+  不把子运行、辅助调用、平台规划 / 验收调用或未知费用说成已经覆盖。
+- 同一只读栏目复用在 Task 整页及 Goal 打开的 Task 门户。客户端沿既有 local-replica
+  做内存缓存与身份隔离，运行期间每 15 秒只读刷新，Task 收尾后再对账；初次失败
+  不显示零，后台技术错误保留上次值并标明可能变化。明确失去访问资格则清除旧值。
+  刷新按钮只读用量，不运行模型、不继续任务、不回答问题。
+- 原 Goal 预算公式和上限控制未改；标签改为 “已记成本（估算 / 上报）”，并显示
+  直接任务、监督 / 管理计数与未覆盖范围。估算金额可能高于或低于实际账单，
+  不将其称作真实费用下界。
+
+本机 Web 使用三个明确合成 Task：两条完整记录与一条缺失记录显示四桶
+`10 / 9 / 13 / 2`，合计 34；每个持久化意图重复应用仍只计一次。完整零记录与
+尚无运行分别显示 `≥ 0` 和 `--`。初次 / 后台错误及重试、Goal 预算说明和 Task
+门户未知态均实际观察；390、768、1440 CSS 像素仅为桌面 DOM 视口核验，不是移动
+路由、触屏或真机验收。刷新键盘焦点与 Enter 只触发一次用量 GET，没有提交业务
+输入；不据此宣称完整无障碍验收。原始过宽的批量故障注入误伤另一 API 的尝试保留，
+有效初次错误证据已限定到 `task.currentUsage` 的单个响应包。
+
+上述数据经真实 Pi adapter 与实际持久化入口写入，原生帧由确定性 fixture 提供，
+没有 CLI / 模型生产者；该 fixture 的 provider 请求为零，不是 P5 真实模型任务。
+最终适用本地回归分别为 server 607、app 763、数据库 43、Pi adapter 31，以及应用 /
+新增测试类型通过。app 测试退出仍有已知 happy-dom AbortError stderr，未伪称控制台
+全净；原 GoalMetric 时间线的两项 purity 警告未由本片新增。质量检查不替代产品观察。
+实际图片由主执行者检查，缺少独立 acceptance-checker；代码独审、PR、CI 和合并仍须
+按本切片精确 head 绑定，不回填旧 P4 审查或绿灯。
+
+## Desk 来源、许可与实际处置
+
+本次对照来源为 `chenhaoxiang/pi-desk` 的 `bd36b07`，包括其原 owner 合同、
+`packages/desk-bridge/src/usage.ts` 及相应用量测试。它们用于核对四桶、未知 / 下界、
+去重和准确运行归属语义，**没有复制 Desk 的 SwiftUI、bridge 代码或测试文件**。
+本仓实现与回归独立编写，复用的是 LobeHub 已有 Pi adapter、消息持久化、Task /
+Operation、local-replica 和界面组件，不声称 “Desk 源码已经集成”。
+
+| 原能力 / 资产                                        | 当前处置                                             |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| 工作状态、阻塞、下一步与准确运行身份                 | 已在原 Task / Goal 消费，Desk 仅供语义对照，不双写   |
+| 需关注问题                                           | 复用原问题生命周期和现有关注入口，不迁第二审批中心   |
+| 当前运行四桶用量及缺失语义                           | 本片独立实现有界投影；不复制 Desk 的采集器或收据集合 |
+| Gate / CI 阶段摘要                                   | 沿原 owner 有界公开读口继续接入，当前不写已完成      |
+| 旧 UsageLedger、配置和历史原件                       | 原地保留，不扫描 / 导入，不把新 UI 当作迁移完成      |
+| SwiftUI / AppKit、菜单栏特效、重复设置和可选 AI 助手 | 不迁，不为沉没成本继续扩张                           |
+| App /bridge 运行入口                                 | 未退出；P5、保全与在途安全满足后才按 P6 处理         |
+
+所核 Desk 提交未见 LICENSE / COPYING / NOTICE 授权文件，根及 bridge package 也未
+声明 license；不能据公开仓或相同 owner 推断第三方分发许可，本片因此不搬运其代码。
+本仓上游 `LICENSE` 仍为 LobeHub Community License，保留原文与来源；其中商业
+衍生开发 / 分发条款须在相应外部交付前核对，不把本机验证或 fork 解释为已取得
+商业分发许可。本轮没有正式发行、商业分发或重写许可证。
 
 ## 本地复验
 
