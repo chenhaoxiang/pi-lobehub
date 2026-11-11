@@ -70,6 +70,7 @@ jobs:
           apps/server/src/services/goal/advanceGoal.test.ts
           apps/server/src/services/goal/assignment.taskOwner.test.ts
           apps/server/src/services/goal/GoalService/__tests__/dispatch.test.ts
+          apps/server/src/services/goal/GoalService/__tests__/currentExecutions.test.ts
           apps/server/src/services/goal/GoalService/__tests__/recovery.test.ts
           apps/server/src/services/goal/GoalService/__tests__/rework.test.ts
           apps/server/src/services/goal/GoalService/__tests__/seedDependencies.test.ts
@@ -81,14 +82,24 @@ jobs:
           apps/server/src/services/verify/__tests__/acceptanceSettledCheck.test.ts
           apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
           apps/server/src/services/verify/__tests__/carryForward.db.test.ts
-      - name: Check rework-scope copy and required user guidance
+      - name: Check goal status, attention, rework copy and required user guidance
         run: >-
           node node_modules/vitest/vitest.mjs run --project app --maxWorkers=3
-          src/features/AgentGoals/ProcessControl/coordinatorCopy.rework.test.ts
-          src/features/AgentGoals/ProcessControl/coordinatorCopy.test.ts
+          src/features/AgentGoals/ProcessControl
+          src/features/Portal/GoalMetric
           src/features/AgentGoals/GoalDecision/mapping.test.ts
+          src/features/GlobalApprovalNotification
+          src/store/home/slices/inbox/action.taskInteractions.test.ts
+          src/store/home/slices/inbox/action.test.ts
       - name: Check real database run claims and owner isolation
         working-directory: packages/database
-        run: node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 --silent='passed-only' src/models/__tests__/task.runClaim.test.ts src/models/__tests__/taskTopic.takeOver.test.ts src/models/__tests__/taskTopic.reopenSettledRun.test.ts
+        run: >-
+          node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 --silent='passed-only'
+          src/models/__tests__/task.runClaim.test.ts
+          src/models/__tests__/taskTopic.takeOver.test.ts
+          src/models/__tests__/taskTopic.reopenSettledRun.test.ts
+          src/models/__tests__/taskTopic.currentRun.test.ts
+          src/models/__tests__/agentOperation.executionFacts.test.ts
+          src/models/__tests__/taskAttention.test.ts
       - name: Check application and new regression types
         run: bun run type-check && node_modules/.bin/tsrs --noEmit -p .github/scripts/piTaskGoalTypes.json --checkers 4

@@ -120,9 +120,9 @@ const NodeRow = memo<{
 NodeRow.displayName = 'GoalMetricNodeRow';
 
 /**
- * How long the Task has taken across every attempt — a live clock only while
- * it is genuinely running, a frozen span otherwise. A Task that was never
- * dispatched has nothing to show.
+ * The exact current Operation span. An in-flight clock needs its running
+ * record; a frozen span needs an actual completion timestamp. Graph activations
+ * cannot supply either.
  */
 const TaskDuration = memo<{ view: GoalNodeView }>(({ view }) => {
   const span = taskRowSpan(view);
@@ -177,12 +177,24 @@ TaskStartDate.displayName = 'GoalMetricTaskStartDate';
 
 /** The Task-list visual for each row state; `running` draws the animated ring instead. */
 const STATE_VISUAL = {
-  decision: TASK_STATUS_VISUALS.paused,
-  done: TASK_STATUS_VISUALS.completed,
-  queued: TASK_STATUS_VISUALS.backlog,
-  retired: TASK_STATUS_VISUALS.canceled,
-  stalled: TASK_HOLD_VISUALS.stalled,
-  waitingQuota: TASK_HOLD_VISUALS.waitingQuota,
+  'decision': TASK_STATUS_VISUALS.paused,
+  'done': TASK_STATUS_VISUALS.completed,
+  'queued': TASK_STATUS_VISUALS.backlog,
+  'ready': TASK_STATUS_VISUALS.backlog,
+  'paused': TASK_STATUS_VISUALS.paused,
+  'scheduled': TASK_STATUS_VISUALS.scheduled,
+  'settled': TASK_STATUS_VISUALS.backlog,
+  'settling': TASK_STATUS_VISUALS.scheduled,
+  'starting': TASK_STATUS_VISUALS.scheduled,
+  'unknown': TASK_STATUS_VISUALS.backlog,
+  'verifying': TASK_STATUS_VISUALS.scheduled,
+  'waiting': TASK_STATUS_VISUALS.scheduled,
+  'waiting-client': TASK_STATUS_VISUALS.scheduled,
+  'waiting-input': TASK_STATUS_VISUALS.paused,
+  'waiting-tool': TASK_STATUS_VISUALS.scheduled,
+  'retired': TASK_STATUS_VISUALS.canceled,
+  'stalled': TASK_HOLD_VISUALS.stalled,
+  'waitingQuota': TASK_HOLD_VISUALS.waitingQuota,
 } as const satisfies Record<Exclude<TaskRowState, 'running'>, unknown>;
 
 /**
@@ -193,10 +205,11 @@ const STATE_VISUAL = {
 const TaskStatusGlyph = memo<{ view: GoalNodeView }>(({ view }) => {
   const { t } = useTranslation('chat');
   const state = taskRowState(view);
+  const label = t(taskRowStateLabelKey(view, state));
 
   return (
-    <Tooltip title={t(taskRowStateLabelKey(view, state))}>
-      <span style={{ display: 'inline-flex', flex: 'none' }}>
+    <Tooltip title={label}>
+      <span aria-label={label} role="img" style={{ display: 'inline-flex', flex: 'none' }}>
         {state === 'running' ? (
           <RunningGlyph size={16} />
         ) : (

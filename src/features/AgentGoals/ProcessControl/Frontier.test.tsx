@@ -60,6 +60,17 @@ const snapshot: GoalGraphSnapshot = {
     },
   ],
   goal,
+  executions: {
+    w1: {
+      observedAt: at(240),
+      taskId: 'task-1',
+      taskStatus: 'running',
+      topicId: 'topic-1',
+      topicStatus: 'running',
+      operationId: 'op-1',
+      operation: { id: 'op-1', status: 'running', startedAt: at(30), updatedAt: at(30) },
+    },
+  },
   nodes: [task],
   workVersions: [],
 } as unknown as GoalGraphSnapshot;
@@ -82,6 +93,6 @@ describe('Frontier stalled row', () => {
     expect(screen.getByText('goalProcess.stalled.description')).toBeTruthy();
     // The open attempt reads "Running" under a "Stalled" badge — a contradiction
     // the reader cannot resolve, and the description already says what happened.
-    expect(screen.queryByText('goalProcess.attempts.title')).toBeNull();
+    expect(screen.queryByText('goalProcess.coordinatorRecords.title')).toBeNull();
   });
 });

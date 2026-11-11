@@ -13,11 +13,13 @@ import ApprovalCard from './ApprovalCard';
 import GoalClarificationCard from './GoalClarificationCard';
 import GoalDecisionCard from './GoalDecisionCard';
 import { styles } from './styles';
+import { TaskInteractionCard, TaskInteractionReadStatus } from './TaskInteractionCard';
 import { useApprovalIslandCollapse } from './useApprovalIslandCollapse';
 import { useGlobalPendingApprovals } from './useGlobalPendingApprovals';
 import { goalClarificationIslandKey, useIslandDismissals } from './useIslandDismissals';
 import { usePendingGoalClarifications } from './usePendingGoalClarifications';
 import { usePendingGoalDecisions } from './usePendingGoalDecisions';
+import { usePendingTaskInteractions } from './usePendingTaskInteractions';
 
 const SPRING = { damping: 30, stiffness: 320, type: 'spring' } as const;
 
@@ -35,6 +37,7 @@ const TOP_OFFSET = isDesktop ? TITLE_BAR_HEIGHT + 8 : 16;
 const GlobalApprovalNotification = memo(() => {
   const { t } = useTranslation('chat');
   const groups = useGlobalPendingApprovals();
+  const taskInputs = usePendingTaskInteractions(groups);
   // A goal waiting on its clarification round asks through the same island.
   // Run approvals go first: a run is blocked mid-turn, a goal has not started.
   const pendingGoalGroups = usePendingGoalClarifications();
@@ -56,7 +59,7 @@ const GlobalApprovalNotification = memo(() => {
     () => pendingGoalItems.filter((item) => !dismissed.has(item.key)),
     [dismissed, pendingGoalItems],
   );
-  const total = groups.length + goalGroups.length + goalItems.length;
+  const total = groups.length + taskInputs.items.length + goalGroups.length + goalItems.length;
   const [collapsed, setCollapsed] = useApprovalIslandCollapse(total);
 
   const hasApprovals = total > 0;
@@ -65,8 +68,9 @@ const GlobalApprovalNotification = memo(() => {
   // would let a single Enter submit every pending approval at once. Extra
   // approvals queue behind a count and surface as each one resolves.
   const top = groups[0];
-  const topGoal = top ? undefined : goalGroups[0];
-  const topGoalItem = top || topGoal ? undefined : goalItems[0];
+  const topTaskInput = top ? undefined : taskInputs.items[0];
+  const topGoal = top || topTaskInput ? undefined : goalGroups[0];
+  const topGoalItem = top || topTaskInput || topGoal ? undefined : goalItems[0];
   const extraCount = total - 1;
 
   return (
@@ -74,19 +78,21 @@ const GlobalApprovalNotification = memo(() => {
       <AnimatePresence mode="popLayout">
         {hasApprovals &&
           (collapsed ? (
-            <m.div
+            <m.button
               layout
               animate={{ opacity: 1, scale: 1, y: 0 }}
+              aria-expanded={false}
               className={styles.pill}
               exit={{ opacity: 0, scale: 0.9, y: -16 }}
               initial={{ opacity: 0, scale: 0.9, y: -16 }}
               key="pill"
               transition={SPRING}
+              type="button"
               onClick={() => setCollapsed(false)}
             >
               <span className={styles.pillDot} />
               {t('globalApproval.pendingCount', { count: total })}
-            </m.div>
+            </m.button>
           ) : (
             <m.div
               layout
@@ -109,6 +115,23 @@ const GlobalApprovalNotification = memo(() => {
                     transition={SPRING}
                   >
                     <ApprovalCard group={top} onCollapse={() => setCollapsed(true)} />
+                  </m.div>
+                )}
+                {topTaskInput && (
+                  <m.div
+                    layout
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: -16 }}
+                    initial={{ opacity: 0, scale: 0.96, y: -16 }}
+                    key={`task-input:${topTaskInput.operationId}:${topTaskInput.toolMessageId}`}
+                    style={{ pointerEvents: 'auto', width: '100%' }}
+                    transition={SPRING}
+                  >
+                    <TaskInteractionCard
+                      item={topTaskInput}
+                      readError={!!taskInputs.error}
+                      onCollapse={() => setCollapsed(true)}
+                    />
                   </m.div>
                 )}
                 {topGoal && (
@@ -154,6 +177,13 @@ const GlobalApprovalNotification = memo(() => {
             </m.div>
           ))}
       </AnimatePresence>
+      {(taskInputs.error || taskInputs.truncated) && (
+        <TaskInteractionReadStatus
+          error={!!taskInputs.error}
+          pending={taskInputs.isValidating}
+          retry={taskInputs.retry}
+        />
+      )}
     </div>
   );
 });

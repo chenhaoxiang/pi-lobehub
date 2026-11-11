@@ -848,6 +848,30 @@ export class AgentOperationModel {
       .where(and(inArray(agentOperations.id, operationIds), this.ownership()));
   }
 
+  /** Creator-facing status metadata only; never hydrate prompts, errors or trace payloads. */
+  async findExecutionFactsByIds(operationIds: string[]) {
+    if (operationIds.length === 0) return [];
+    return this.db
+      .select({
+        completedAt: agentOperations.completedAt,
+        createdAt: agentOperations.createdAt,
+        id: agentOperations.id,
+        startedAt: agentOperations.startedAt,
+        status: agentOperations.status,
+        taskId: agentOperations.taskId,
+        topicId: agentOperations.topicId,
+        updatedAt: agentOperations.updatedAt,
+      })
+      .from(agentOperations)
+      .where(
+        and(
+          inArray(agentOperations.id, operationIds),
+          this.ownership(),
+          notShareVisitorTopicRef(agentOperations.topicId),
+        ),
+      );
+  }
+
   /**
    * Creator-facing twin of {@link AgentOperationModel.findById}: excludes
    * operations recorded inside an agent-share visitor topic, so a creator

@@ -1,6 +1,7 @@
 import type { TaskListItem, TaskParticipant } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 
+import { TaskAttentionModel } from '@/database/models/taskAttention';
 import { TaskLabelModel } from '@/database/models/taskLabel';
 import { UserModel } from '@/database/models/user';
 import { router } from '@/libs/trpc/lambda';
@@ -10,6 +11,13 @@ import { groupListSchema, listSchema, resolveClosedAfter } from '../_helpers/tas
 import { idInput, taskProcedure } from './procedures';
 
 export const queriesRouter = router({
+  pendingInteractions: taskProcedure.query(({ ctx }) =>
+    new TaskAttentionModel(
+      ctx.serverDB,
+      ctx.userId,
+      ctx.workspaceId ?? undefined,
+    ).listPendingInteractions(),
+  ),
   detail: taskProcedure.input(idInput).query(async ({ input, ctx }) => {
     try {
       const task = await resolveTaskOrThrow(ctx.taskModel, input.id);

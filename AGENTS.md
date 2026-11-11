@@ -18,9 +18,14 @@ branches are read-only inputs, not this fork's deployment or installation channe
   (maintained Pi compatibility, structured questions and scoped control).
   The user has now also authorised batch 3 (P3): the existing Task/Goal,
   responsibility, dependency, Pi execution and verification/acceptance/rework
-  loop, including normal PR delivery. Reuse the same Change; later Desk
-  capability migration and P4–P6 remain planned.
-  Do not publish, deploy production, remove Desk or force-reload live Pi.
+  loop, including normal PR delivery. The user subsequently authorised the
+  remaining P4–P6 implementation, deferring installation and personal trial
+  until it is ready. Reuse this same Change: P4 consumes explicit work/attention/
+  usage/engineering facts; P5 verifies real scoped samples; P6 may retire only
+  owned Desk entries after replacement, data preservation and in-flight safety
+  have actually been verified. Never remove Desk prematurely.
+  Do not publish, deploy production, install the user-facing app now or
+  force-reload live Pi.
   Real-model verification needs the actual authorised test configuration and
   spending scope; provider-free checks never borrow production credentials.
 - Use dedicated worktrees for tracked changes; keep the physical main checkout

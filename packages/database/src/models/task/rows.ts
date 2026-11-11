@@ -81,6 +81,20 @@ export const findByIds = async (ctx: TaskModelContext, ids: string[]): Promise<T
     .where(and(inArray(tasks.id, ids), taskOwnership(ctx)));
 };
 
+/** The current execution identity for polling; no instruction, config or editor data. */
+export const findExecutionFactsByIds = async (ctx: TaskModelContext, ids: string[]) => {
+  if (ids.length === 0) return [];
+  return ctx.db
+    .select({
+      currentTopicId: tasks.currentTopicId,
+      id: tasks.id,
+      startedAt: tasks.startedAt,
+      status: tasks.status,
+    })
+    .from(tasks)
+    .where(and(inArray(tasks.id, ids), taskOwnership(ctx)));
+};
+
 /**
  * Only the assignee of each task. For callers on a polling path (the goal
  * graph re-reads every few seconds while a goal advances) that would

@@ -1,3 +1,4 @@
+import type { AgentOperationStatus } from './agentOperation';
 import type { GoalReportDispatch, GoalReportState } from './goalReport';
 import type { GoalRolloutPolicy, GoalRolloutState } from './goalRollout';
 import type { InitialGoalOverviewContext } from './stepContext';
@@ -773,6 +774,24 @@ export interface GoalNodeAcceptance {
   status: AcceptanceStatus;
 }
 
+/** Read-only current execution original; graph activation is not an execution receipt. */
+export interface GoalTaskExecution {
+  observedAt: Date;
+  operation?: {
+    completedAt?: Date | null;
+    id: string;
+    startedAt: Date | null;
+    status: AgentOperationStatus;
+    updatedAt: Date;
+  };
+  /** The current run row may name an unavailable Operation; do not infer its status. */
+  operationId?: string;
+  taskId: string;
+  taskStatus: string;
+  topicId?: string;
+  topicStatus?: string;
+}
+
 export interface GoalGraphSnapshot {
   /**
    * Verification state per task node, keyed by node id. Every dispatched task
@@ -797,6 +816,8 @@ export interface GoalGraphSnapshot {
   deliveredAt?: Record<string, Date>;
   edges: GoalGraphEdge[];
   events: GoalGraphEvent[];
+  /** Exact current Task/topic/Operation metadata, keyed by node; absent means not collected. */
+  executions?: Record<string, GoalTaskExecution>;
   goal: GoalItem;
   nodes: GoalGraphNode[];
   /**
@@ -813,10 +834,9 @@ export interface GoalGraphSnapshot {
    */
   report?: GoalReportState;
   /**
-   * Live heartbeat per active task node id: the `agent_operations.updatedAt`
-   * of the run behind it. The runtime refreshes that lease every ~90s, while
-   * `goal_nodes.updatedAt` only moves on observations / status changes —
-   * liveness judgements must use whichever of the two is newer.
+   * Legacy aggregate kept for older consumers. Current execution UI reads
+   * `executions` instead: only its matching current Operation can supply a run
+   * heartbeat; a newer graph observation must not freshen an old run's lease.
    */
   runHeartbeats?: Record<string, Date>;
   /**

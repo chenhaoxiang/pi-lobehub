@@ -6,14 +6,15 @@ status: active
 truth_mode: maintained
 created: 2026-11-11
 verified: 2026-11-11
-verification_scope: P3 source, isolated database and real Pi RPC deterministic fixtures plus authenticated localhost Web observations; not business-model acceptance, production, release or persistent operation
+verification_scope: P3 deterministic Pi RPC and P4 current-run metadata plus original-interaction attention with isolated database and authenticated localhost Web observations; not real-model business acceptance, installation, production or persistent operation
 ---
 
 # Task、Goal 与 Pi 的交付路径
 
-本页对应同一 Change `adopt-pi-workspace` 的第三批 P3。LobeHub 继续拥有业务
-Task、Goal、负责人、依赖和验收；Pi 继续执行原生运行，不另建任务库或调度器。
-P4–P6、Desk 能力迁移 / 卸载、真实模型业务验收及生产发布均未由本页完成。
+本页对应同一 Change `adopt-pi-workspace` 的 P3 及 P4 状态 / 关注切片。LobeHub
+继续拥有业务 Task、Goal、负责人、依赖和验收；Pi 继续执行原生运行，不另建任务库
+或调度器。P4 用量 / 工程事实、P5 真实模型业务验收、P6 Desk 退出仍按计划验真，
+不从当前切片推导整项完成。用户安装与本人试用暂缓，生产 / 正式发布不执行。
 
 ## 身份与开工
 
@@ -78,9 +79,57 @@ Goal 失败轮次交回其协调器返工；周期 tick 的一次检查结果不
    原 Task 或最终审阅仍在运行时，
    不重置其状态，决策保留，使用已有任务入口处理运行后再确认。
 
-“Goal 图节点 active” 不是 Pi 正在执行的证明。当前上游图中的计时 / 尝试展示也
-不能代替 Operation 原件；本轮浏览器 fixture 中原 Task 已回到 backlog、
-Operation 为零时，图仍可显示进行中。本页不把它计为已派发，也未扩入 P4 的状态展示迁移。
+“Goal 图节点 active” 不是 Pi 正在执行的证明。P3 浏览器 fixture 中原 Task 已
+回到 backlog、Operation 为零，旧图仍可显示进行中或随后显示停滞；P4 下节修正
+这一读取路径，不改写历史图事件或把它们当作原生运行原件。
+
+## P4：读取当前运行与原问题
+
+- Goal graph 按显式 Task ID 读取内容无关的 Task 状态、`currentTopicId` 对应的
+  TaskTopic 和准确 Operation。Operation 必须同时匹配 Task、当前话题和本轮
+  `startedAt` 代际；不按最新话题、旧 running 行、图节点激活或连接状态反推。
+  Task / Operation 查询只投影必要字段，不加载提示词、错误正文、配置或 trace 路径。
+- 任务待派发、预留、运行记录活跃、等待输入 / 工具 / 客户端、检查、收尾和未知
+  分开显示。只有匹配的运行记录可提供计时 / 心跳；新图观察不能刷新旧运行的 lease。
+  缺原件显示未知，不从 completed 推导验收通过。Goal review 或有待决策时，可推进数
+  为零；批量视图不把心跳陈旧或机器等待变成用户审批。
+- 图中的次数、展开记录与生命周期激活文案明确是 “图节点推进记录”；目标总历时
+  包括等待，不称原生 Pi 运行时长。这里没有另建原生调用次数或第二份账本。
+- 既有全局关注入口新增只读 `task.pendingInteractions`。它仅检查当前范围内，
+  当前用户拥有的前 100 个活跃 Task 运行，并从准确话题、Operation、原工具消息及
+  Pi 干预状态读取定位符；超出窗口明确提示不完整，不扫描全量历史。
+  不返回问题正文、工具参数、凭据或私有路径，不创造批准权。
+- 已回答 / 取消 / 会话结束 / 超时、已进入 resolving、旧话题、旧代际或终结 Operation
+  不再作为待回答提醒。待回答仅由原工具的 pending 记录说明，单有 waiting_for_human
+  不够。提醒按原 Operation + 工具消息 + 调用身份去重；已加载、当前页和门户问题
+  留给原控件，Goal 决策 / 签收按各自原 ID 去重。
+- 提醒只打开标准原运行页。它不回答、不恢复、不签收，也不把只在首页挂载的
+  抽屉当作全局导航。收起只隐藏 UI；读取失败保留上次观察并标明可能变化，提供重试，
+  不宣称 “已清空”。客户端沿现有 replica 范围隔离，定位符仅内存缓存，每 15 秒只读
+  数据库刷新，查看不触发模型。
+
+本地验证为合成数据：已登录 localhost 重开 Goal 后恢复单条提醒，实际打开准确
+原问题页，原 pending 状态未改变；收起显示一项，单独注入读取失败显示明确提示，
+恢复后重试成功，原工具改为结束状态后提醒消失。测试种子最初使用错误 renderer key
+导致出现通用审批表单，按实际 Pi 桥的 `provider=pi` / `identifier=claude-code` 合同
+纠正后才核验原问题；没有把该种子问题写成产品回归。也没有原生生产者或真实模型
+在等待这份合成问题，未提交答案，不替代 P5 提问 / 纠偏验收。
+
+初始切片适用回归为 server 466、app 365、数据库 32，初始远端 CI 也通过；独审
+随后发现漏接的 Goal “全部任务” 消费者，父级实际复现其旧测试变红，不能据原 CI 直接
+合并。修正详情的状态 / 标签 / 时钟、补准确 Operation 完成时间，并把 GoalMetric
+回归纳入同一 CI。批量分组也从实际单元状态归约，未知 / 等待 / 仅排队不再画运行
+动画；原运行导航改为既有 URL builder。补验 app 401、受影响 server 30、数据库 17
+及应用 / 新增测试类型均通过；集合有交叉，不相加声称去重总数。
+
+同一暂停的合成 Goal 已实际核到：全部任务的提示从 “进行中” 变为 “执行状态未知”，
+无虚构时长；两项未知的试验分组从 “探索中” 变为未知。只切换精确旧客户端 helper
+与分组 renderer，后端 / 数据库相同，之后恢复原文件。关注读取窗口仍按运行创建时间
+升序保留前 100 个；独审对此提出低概率非阻断建议，当前明确不保证完整或最新优先。
+
+实际 Web 页面和必要图片由主执行者核验，未安排独立 acceptance-checker；独立代码
+审查、PR、CI 与合并以精确 head 原件为准，原 BLOCK 不回填为通过。Electron、移动端
+和完整键盘 / 辅助技术验收未在本切片执行。
 
 ## 本地复验
 

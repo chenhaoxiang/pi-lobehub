@@ -43,6 +43,16 @@ describe('selectIslandGoalItems', () => {
     ).toEqual(['goal-decision:d2', 'goal-sign-off:acc-g3']);
   });
 
+  it('counts each original decision and acceptance once even when joins repeat them', () => {
+    const repeated = {
+      decisions: [decision('g1', 'd1'), decision('g1', 'd1'), decision('g2', 'd2')],
+      signOffs: [signOff('g3'), signOff('g3')],
+    };
+    expect(
+      selectIslandGoalItems(repeated, { canAnswer: true, onGoalPage: false }).map((i) => i.key),
+    ).toEqual(['goal-decision:d1', 'goal-decision:d2', 'goal-sign-off:acc-g3']);
+  });
+
   it('asks nothing of someone who cannot answer', () => {
     expect(selectIslandGoalItems(data, { canAnswer: false, onGoalPage: false })).toEqual([]);
   });

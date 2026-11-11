@@ -10,7 +10,19 @@
     "../../apps/server/src/services/verify/settle.ownership.test.ts",
     "../../apps/server/src/services/goal/GoalService/__tests__/rework.test.ts",
     "../../packages/database/src/models/__tests__/task.runClaim.test.ts",
-    "../../src/features/AgentGoals/ProcessControl/coordinatorCopy.rework.test.ts"
+    "../../src/features/AgentGoals/ProcessControl/coordinatorCopy.rework.test.ts",
+    "../../apps/server/src/services/goal/GoalService/__tests__/currentExecutions.test.ts",
+    "../../packages/database/src/models/__tests__/taskTopic.currentRun.test.ts",
+    "../../packages/database/src/models/__tests__/agentOperation.executionFacts.test.ts",
+    "../../packages/database/src/models/__tests__/taskAttention.test.ts",
+    "../../src/features/AgentGoals/ProcessControl/goalGraphViewModel.execution.test.ts",
+    "../../src/features/AgentGoals/ProcessControl/goalGraphViewModel.test.ts",
+    "../../src/features/AgentGoals/ProcessControl/Graph/batchModel.test.ts",
+    "../../src/features/AgentGoals/ProcessControl/Frontier.test.tsx",
+    "../../src/features/Portal/GoalMetric/taskRowState.test.ts",
+    "../../src/features/GlobalApprovalNotification/usePendingTaskInteractions.test.ts",
+    "../../src/features/GlobalApprovalNotification/usePendingGoalDecisions.test.ts",
+    "../../src/store/home/slices/inbox/action.taskInteractions.test.ts"
   ],
   "references": [
     {

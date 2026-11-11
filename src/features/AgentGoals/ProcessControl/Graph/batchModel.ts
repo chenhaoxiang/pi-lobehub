@@ -30,7 +30,8 @@ import { type GoalGraphView, type GoalNodeView, isRunningNode } from '../goalGra
  */
 
 /** One square's state: not run / running / needs a person / done / superseded. */
-export type BatchCellState = 'backlog' | 'running' | 'human' | 'done' | 'stale';
+export type BatchCellState =
+  'backlog' | 'running' | 'human' | 'done' | 'stale' | 'waiting' | 'unknown';
 
 export interface BatchCell {
   /** 0-based position inside its wave. */
@@ -148,10 +149,22 @@ export const batchCellState = (
   if (status === 'retired') return 'stale';
   if (status === 'rejected') return 'human';
   if (status === 'resolved') return 'done';
-  if (status === 'waiting' || view.decision || view.isStale || waitingOn.has(view.node.id))
+  if (
+    (view.decision?.status === 'pending' && view.decision.authority === 'user') ||
+    waitingOn.has(view.node.id)
+  )
     return 'human';
-  // Held for a usage window to reopen: still in flight, resumes on its own.
-  if (isRunningNode(view) || view.quotaRetryAt) return 'running';
+  if (view.isStale) return 'unknown';
+  if (status === 'waiting' || view.decision?.status === 'pending') return 'waiting';
+  if (isRunningNode(view)) return 'running';
+  if (
+    view.quotaRetryAt ||
+    view.isVerifying ||
+    view.executionState?.startsWith('waiting-') ||
+    view.executionState === 'starting'
+  )
+    return 'waiting';
+  if (view.node.status === 'active' && view.executionState !== 'ready') return 'unknown';
   return 'backlog';
 };
 
@@ -166,7 +179,13 @@ export const buildBatchModel = (graph: GoalGraphView, batchId: string): BatchMod
   // A unit waits on a person when an open decision names it as its subject.
   const waitingOn = new Set(
     graph.nodes
-      .filter((view) => view.node.kind === 'decision' && view.node.status === 'waiting')
+      .filter(
+        (view) =>
+          view.node.kind === 'decision' &&
+          view.node.status === 'waiting' &&
+          view.decision?.status === 'pending' &&
+          view.decision.authority === 'user',
+      )
       .map((view) => view.gateSubjectId)
       .filter((id): id is string => !!id),
   );
@@ -473,9 +492,23 @@ export const countCells = (cells: { state: BatchCellState }[]) => {
     human: 0,
     running: 0,
     stale: 0,
+    waiting: 0,
+    unknown: 0,
   };
   for (const cell of cells) counts[cell.state] += 1;
   return counts;
+};
+
+/** A group animates only when one of its current units is recorded running. */
+export const batchUnitsState = (cells: { state: BatchCellState }[]): BatchCellState => {
+  const counts = countCells(cells);
+  if (counts.human) return 'human';
+  if (counts.unknown) return 'unknown';
+  if (counts.stale && counts.stale + counts.done < cells.length) return 'stale';
+  if (cells.length > 0 && counts.done + counts.stale === cells.length) return 'done';
+  if (counts.running) return 'running';
+  if (counts.waiting) return 'waiting';
+  return 'backlog';
 };
 
 /**

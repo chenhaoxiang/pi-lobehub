@@ -54,6 +54,7 @@ export const selectIslandGoalItems = (
   }: { canAnswer: boolean; onGoalPage: boolean; portalGoalId?: string },
 ): IslandGoalItem[] => {
   if (!data || !canAnswer || onGoalPage) return [];
+  const seen = new Set<string>();
   return [
     ...data.decisions
       .filter((decision) => decision.goalId !== portalGoalId)
@@ -69,7 +70,11 @@ export const selectIslandGoalItems = (
         signOff,
         type: 'signOff' as const,
       })),
-  ];
+  ].filter((item) => {
+    if (seen.has(item.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
 };
 
 /** Goal gates and sign-offs the island should ask, oldest first. */
