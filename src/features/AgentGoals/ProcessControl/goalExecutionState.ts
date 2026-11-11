@@ -16,8 +16,9 @@ export type GoalExecutionState =
   | 'waiting-tool';
 
 /** Finite locale keys keep every existing status consumer on the same words. */
-export const goalExecutionCopyKey = (state: GoalExecutionState): string =>
-  `goalProcess.execution.${state}`;
+export const goalExecutionCopyKey = (
+  state: GoalExecutionState,
+): `goalProcess.execution.${GoalExecutionState}` => `goalProcess.execution.${state}`;
 
 /** A graph activation and a live transport connection are not execution originals. */
 export const deriveGoalExecutionState = (

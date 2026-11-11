@@ -49,6 +49,7 @@ import {
   type BatchCellState,
   type BatchProbe,
   type BatchUnitOrigin,
+  batchUnitsState,
   countCells,
   reopenedRows,
 } from './batchModel';
@@ -502,20 +503,21 @@ const useUnitsStatus = () => {
   return (
     cells: { state: BatchCellState }[],
     copy: { done: string; pending: string; running: string },
-    started: boolean,
   ): GroupStatus => {
     const counts = countCells(cells);
-    if (counts.human)
+    const state = batchUnitsState(cells);
+    if (state === 'unknown' || state === 'waiting')
+      return { ...CELL_VISUAL[state], text: t(`goalBatch.cell.${state}`) };
+    if (state === 'human')
       return { ...CELL_VISUAL.human, text: t('goalBatch.status.human', { count: counts.human }) };
-    if (counts.stale && counts.stale + counts.done < cells.length)
+    if (state === 'stale')
       return {
         color: cssVar.colorWarning,
         icon: CircleSlash,
         text: t('goalBatch.status.stale', { count: counts.stale }),
       };
-    if (cells.length > 0 && counts.done + counts.stale === cells.length)
-      return { ...CELL_VISUAL.done, text: copy.done };
-    if (!started && !counts.running) return { ...CELL_VISUAL.backlog, text: copy.pending };
+    if (state === 'done') return { ...CELL_VISUAL.done, text: copy.done };
+    if (state === 'backlog') return { ...CELL_VISUAL.backlog, text: copy.pending };
     return { ...CELL_VISUAL.running, running: true, text: copy.running };
   };
 };
@@ -528,12 +530,14 @@ const SquareLegend = memo(() => {
   const label = useCellLabel();
   return (
     <Flexbox gap={6}>
-      {(['backlog', 'running', 'human', 'done', 'stale'] as const).map((state) => (
-        <Flexbox horizontal align={'center'} gap={6} key={state}>
-          <span className={styles.square} style={squareStyle(state)} />
-          {label(state)}
-        </Flexbox>
-      ))}
+      {(['backlog', 'running', 'waiting', 'unknown', 'human', 'done', 'stale'] as const).map(
+        (state) => (
+          <Flexbox horizontal align={'center'} gap={6} key={state}>
+            <span className={styles.square} style={squareStyle(state)} />
+            {label(state)}
+          </Flexbox>
+        ),
+      )}
     </Flexbox>
   );
 });
@@ -622,7 +626,7 @@ const ProbeCell = memo<{ onSelect: (id: string) => void; probe: BatchProbe; view
 ProbeCell.displayName = 'GoalBatchProbeCell';
 
 export const BatchExperimentProbeGroup = memo<NodeProps>(({ data }) => {
-  const { onEnter, onSelect, probes: latest, started, views } = data as BatchExperimentProbeData;
+  const { onEnter, onSelect, probes: latest, views } = data as BatchExperimentProbeData;
   const { t } = useTranslation('chat');
   // Trials sent back and run again in the round: one switch in the head picks
   // which run the cards show, the latest unless the reader goes back.
@@ -636,15 +640,11 @@ export const BatchExperimentProbeGroup = memo<NodeProps>(({ data }) => {
           const run = probe.runs?.[attempt - 1];
           return run ? { ...probe, ...run } : probe;
         });
-  const status = useUnitsStatus()(
-    probes,
-    {
-      done: t('goalBatch.probes.status.done'),
-      pending: t('goalBatch.probes.status.pending'),
-      running: t('goalBatch.probes.status.running'),
-    },
-    started,
-  );
+  const status = useUnitsStatus()(probes, {
+    done: t('goalBatch.probes.status.done'),
+    pending: t('goalBatch.probes.status.pending'),
+    running: t('goalBatch.probes.status.running'),
+  });
   return (
     <GroupShell
       hint={t('goalBatch.probes.hint', { count: probes.length })}
@@ -837,8 +837,7 @@ export interface BatchWavesData extends Record<string, unknown> {
 
 /** A round's waves: the units it re-opened, then the roster waves it owns. */
 export const BatchWavesGroup = memo<NodeProps>(({ data }) => {
-  const { onEnter, onSelect, probes, retros, revision, rows, started, waveSize } =
-    data as BatchWavesData;
+  const { onEnter, onSelect, probes, retros, revision, rows, waveSize } = data as BatchWavesData;
   const { t } = useTranslation('chat');
   const label = useCellLabel();
   const originCopy = useOriginCopy();
@@ -852,15 +851,11 @@ export const BatchWavesGroup = memo<NodeProps>(({ data }) => {
           : t('goalBatch.redispatch.reopenedRow');
   const reopened = revision > 1 ? reopenedRows(probes, waveSize) : [];
   const cells = [...(revision > 1 ? probes : []), ...rows.flatMap((row) => row.cells)];
-  const status = useUnitsStatus()(
-    cells,
-    {
-      done: t('goalBatch.status.done'),
-      pending: t('goalBatch.status.pending'),
-      running: t('goalBatch.status.running'),
-    },
-    started,
-  );
+  const status = useUnitsStatus()(cells, {
+    done: t('goalBatch.status.done'),
+    pending: t('goalBatch.status.pending'),
+    running: t('goalBatch.status.running'),
+  });
   return (
     <GroupShell
       hint={<SquareLegend />}

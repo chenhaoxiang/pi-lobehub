@@ -48,6 +48,7 @@ export const collectCurrentExecutions = async (
       ...(matches
         ? {
             operation: {
+              completedAt: operation.completedAt,
               id: operation.id,
               startedAt: operation.startedAt,
               status: operation.status,

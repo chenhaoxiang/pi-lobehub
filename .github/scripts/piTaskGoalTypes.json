@@ -19,6 +19,7 @@
     "../../src/features/AgentGoals/ProcessControl/goalGraphViewModel.test.ts",
     "../../src/features/AgentGoals/ProcessControl/Graph/batchModel.test.ts",
     "../../src/features/AgentGoals/ProcessControl/Frontier.test.tsx",
+    "../../src/features/Portal/GoalMetric/taskRowState.test.ts",
     "../../src/features/GlobalApprovalNotification/usePendingTaskInteractions.test.ts",
     "../../src/features/GlobalApprovalNotification/usePendingGoalDecisions.test.ts",
     "../../src/store/home/slices/inbox/action.taskInteractions.test.ts"

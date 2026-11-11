@@ -853,6 +853,7 @@ export class AgentOperationModel {
     if (operationIds.length === 0) return [];
     return this.db
       .select({
+        completedAt: agentOperations.completedAt,
         createdAt: agentOperations.createdAt,
         id: agentOperations.id,
         startedAt: agentOperations.startedAt,

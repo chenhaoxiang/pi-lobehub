@@ -29,7 +29,16 @@ describe('AgentOperationModel execution facts', () => {
     const rows = await model.findExecutionFactsByIds(['facts-own']);
     expect(rows).toHaveLength(1);
     expect(Object.keys(rows[0]).sort()).toEqual(
-      ['id', 'taskId', 'topicId', 'createdAt', 'startedAt', 'status', 'updatedAt'].sort(),
+      [
+        'id',
+        'taskId',
+        'topicId',
+        'completedAt',
+        'createdAt',
+        'startedAt',
+        'status',
+        'updatedAt',
+      ].sort(),
     );
     expect(rows[0]).toMatchObject({ id: 'facts-own', status: 'running' });
     expect(await model.findExecutionFactsByIds([])).toEqual([]);

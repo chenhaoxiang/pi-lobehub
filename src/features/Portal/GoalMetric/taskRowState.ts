@@ -1,61 +1,81 @@
+import { isAgentOperationSettled } from '@lobechat/types';
+
+import {
+  goalExecutionCopyKey,
+  type GoalExecutionState,
+} from '@/features/AgentGoals/ProcessControl/goalExecutionState';
 import {
   type GoalNodeView,
   isRunningNode,
 } from '@/features/AgentGoals/ProcessControl/goalGraphViewModel';
 
-/**
- * What one All-tasks row says about its Task. The glyph, its hover label and
- * whether the duration clock ticks all read this one value, so the icon, the
- * word and the clock can never disagree — an `active` node that lost its lease
- * is `stalled`, not "Running".
- */
+/** The All-tasks glyph, label and clock use the same current-run contract as the graph. */
 export type TaskRowState =
-  'decision' | 'done' | 'queued' | 'retired' | 'running' | 'stalled' | 'waitingQuota';
+  | GoalExecutionState
+  | 'decision'
+  | 'done'
+  | 'queued'
+  | 'retired'
+  | 'stalled'
+  | 'waiting'
+  | 'waitingQuota';
 
 export const taskRowState = (view: GoalNodeView): TaskRowState => {
+  if (view.halted) return 'unknown';
   if (view.isStale) return 'stalled';
   if (view.quotaRetryAt) return 'waitingQuota';
-  if (view.decision) return 'decision';
+  if (view.decision?.authority === 'user' && view.decision.status === 'pending') return 'decision';
   if (isRunningNode(view)) return 'running';
   if (view.node.status === 'resolved') return 'done';
   if (view.node.status === 'rejected' || view.node.status === 'retired') return 'retired';
+  if (view.node.status === 'active') return view.executionState ?? 'unknown';
+  if (view.node.status === 'waiting') return 'waiting';
   return 'queued';
 };
 
 export const taskRowStateLabelKey = (view: GoalNodeView, state: TaskRowState) => {
-  if (state === 'stalled') return 'goalProcess.tag.stalled' as const;
-  if (state === 'waitingQuota') return 'goalProcess.tag.waitingQuota' as const;
-  if (state === 'decision') return 'goalProcess.tag.needsDecision' as const;
-  return `goalProcess.nodeStatus.${view.node.status}` as const;
+  switch (state) {
+    case 'stalled': {
+      return 'goalProcess.tag.stalled' as const;
+    }
+    case 'waitingQuota': {
+      return 'goalProcess.tag.waitingQuota' as const;
+    }
+    case 'decision': {
+      return 'goalProcess.tag.needsDecision' as const;
+    }
+    case 'waiting': {
+      return 'goalBatch.cell.waiting' as const;
+    }
+    case 'done':
+    case 'queued':
+    case 'retired': {
+      return `goalProcess.nodeStatus.${view.node.status}` as const;
+    }
+    default: {
+      return goalExecutionCopyKey(state);
+    }
+  }
 };
 
 export interface TaskRowSpan {
-  /** Absent only while the Task is genuinely running — the clock is live. */
+  /** Absent only for a recorded, currently running Operation. */
   endedAt?: Date;
   startedAt: Date;
 }
 
-/**
- * First attempt start → last attempt end. An attempt left open without a
- * running Task (lease lost, parked on a decision) has no audit boundary yet, so
- * it is closed at the last sign of life instead of ticking forever.
- */
+/** A current Operation span, never a duration manufactured from graph activations. */
 export const taskRowSpan = (
   view: GoalNodeView,
   state: TaskRowState = taskRowState(view),
 ): TaskRowSpan | undefined => {
-  const first = view.attempts[0];
-  const last = view.attempts.at(-1);
-  if (!first || !last) return undefined;
-
-  const endedAt = last.endedAt ?? (state === 'running' ? undefined : view.heartbeatAt);
-  return { endedAt, startedAt: first.startedAt };
+  const operation = view.execution?.operation;
+  if (!operation?.startedAt) return undefined;
+  if (state === 'running') return { startedAt: operation.startedAt };
+  if (!isAgentOperationSettled(operation.status) || !operation.completedAt) return undefined;
+  return { endedAt: operation.completedAt, startedAt: operation.startedAt };
 };
 
-/**
- * A metric row backed by a real Task opens that Task's detail directly — the
- * node drill-down would only repeat the row and add one more click. Other node
- * kinds (findings, decisions…) have no Task to open and keep the drill-down.
- */
+/** A Task metric opens its real Task; other kinds keep the node drill-down. */
 export const metricRowTaskId = (view: GoalNodeView): string | undefined =>
   view.node.kind === 'task' ? (view.node.taskId ?? undefined) : undefined;

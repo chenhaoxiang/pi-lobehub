@@ -17,6 +17,7 @@ import { batchGroupId, layoutBatch } from './batchLayout';
 import {
   batchCellState,
   batchPlanTitleKey,
+  batchUnitsState,
   buildBatchModel,
   findBatchGate,
   findBatchPlan,
@@ -387,6 +388,17 @@ describe('buildBatchModel', () => {
 
     expect(cell).toMatchObject({ nodeId: 'f3', runIn: 2, state: 'done', title: 'U3' });
     expect(cell.reopenedIn).toBeUndefined();
+  });
+});
+
+describe('group state from recorded unit states', () => {
+  it('does not animate all-unknown, waiting or merely queued groups', () => {
+    expect(batchUnitsState([{ state: 'unknown' }])).toBe('unknown');
+    expect(batchUnitsState([{ state: 'waiting' }, { state: 'done' }])).toBe('waiting');
+    expect(batchUnitsState([{ state: 'backlog' }])).toBe('backlog');
+    expect(batchUnitsState([{ state: 'running' }, { state: 'done' }])).toBe('running');
+    expect(batchUnitsState([{ state: 'done' }, { state: 'stale' }])).toBe('done');
+    expect(batchUnitsState([{ state: 'human' }, { state: 'unknown' }])).toBe('human');
   });
 });
 

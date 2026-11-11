@@ -1,3 +1,4 @@
+import { AGENT_CHAT_TOPIC_URL } from '@lobechat/const/url';
 import type { TaskPendingInteraction } from '@lobechat/types';
 import { ActionIcon, Button, Flexbox, Text } from '@lobehub/ui';
 import { ChevronUp } from 'lucide-react';
@@ -45,11 +46,7 @@ export const TaskInteractionCard = ({
       <div className={styles.goalActions}>
         <Button
           type="primary"
-          onClick={() =>
-            navigate(
-              `/agent/${encodeURIComponent(item.agentId)}/${encodeURIComponent(item.topicId)}`,
-            )
-          }
+          onClick={() => navigate(AGENT_CHAT_TOPIC_URL(item.agentId, item.topicId))}
         >
           {t('globalApproval.taskInput.open')}
         </Button>

@@ -778,6 +778,7 @@ export interface GoalNodeAcceptance {
 export interface GoalTaskExecution {
   observedAt: Date;
   operation?: {
+    completedAt?: Date | null;
     id: string;
     startedAt: Date | null;
     status: AgentOperationStatus;
@@ -833,10 +834,9 @@ export interface GoalGraphSnapshot {
    */
   report?: GoalReportState;
   /**
-   * Live heartbeat per active task node id: the `agent_operations.updatedAt`
-   * of the run behind it. The runtime refreshes that lease every ~90s, while
-   * `goal_nodes.updatedAt` only moves on observations / status changes —
-   * liveness judgements must use whichever of the two is newer.
+   * Legacy aggregate kept for older consumers. Current execution UI reads
+   * `executions` instead: only its matching current Operation can supply a run
+   * heartbeat; a newer graph observation must not freshen an old run's lease.
    */
   runHeartbeats?: Record<string, Date>;
   /**

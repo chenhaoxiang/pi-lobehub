@@ -86,6 +86,7 @@ jobs:
         run: >-
           node node_modules/vitest/vitest.mjs run --project app --maxWorkers=3
           src/features/AgentGoals/ProcessControl
+          src/features/Portal/GoalMetric
           src/features/AgentGoals/GoalDecision/mapping.test.ts
           src/features/GlobalApprovalNotification
           src/store/home/slices/inbox/action.taskInteractions.test.ts

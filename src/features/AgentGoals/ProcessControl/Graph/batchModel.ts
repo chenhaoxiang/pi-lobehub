@@ -499,6 +499,18 @@ export const countCells = (cells: { state: BatchCellState }[]) => {
   return counts;
 };
 
+/** A group animates only when one of its current units is recorded running. */
+export const batchUnitsState = (cells: { state: BatchCellState }[]): BatchCellState => {
+  const counts = countCells(cells);
+  if (counts.human) return 'human';
+  if (counts.unknown) return 'unknown';
+  if (counts.stale && counts.stale + counts.done < cells.length) return 'stale';
+  if (cells.length > 0 && counts.done + counts.stale === cells.length) return 'done';
+  if (counts.running) return 'running';
+  if (counts.waiting) return 'waiting';
+  return 'backlog';
+};
+
 /**
  * The batch and round a release gate belongs to, when `nodeId` is one — so a
  * surface that opens the gate can show its verdicts rather than a bare decision.
