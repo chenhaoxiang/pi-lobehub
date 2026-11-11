@@ -68,6 +68,7 @@ jobs:
           apps/server/src/services/taskResultBridge
           apps/server/src/services/taskGraph
           apps/server/src/services/goal/advanceGoal.test.ts
+          apps/server/src/services/goal/scheduler
           apps/server/src/services/goal/assignment.taskOwner.test.ts
           apps/server/src/services/goal/GoalService/__tests__/dispatch.test.ts
           apps/server/src/services/goal/GoalService/__tests__/currentExecutions.test.ts

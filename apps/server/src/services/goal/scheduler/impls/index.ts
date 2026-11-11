@@ -20,8 +20,12 @@ export const createGoalSchedulerModule = (): GoalSchedulerImpl => {
   if (cached) return cached;
 
   if (appEnv.enableQueueAgentRuntime) {
-    const baseUrl = process.env.APP_URL;
-    if (!baseUrl) throw new Error('APP_URL is required to schedule goal advances via QStash');
+    // Queue workers may be outside the browser's localhost (for example Docker).
+    const baseUrl = process.env.AGENT_RUNTIME_BASE_URL || process.env.APP_URL;
+    if (!baseUrl)
+      throw new Error(
+        'AGENT_RUNTIME_BASE_URL or APP_URL is required to schedule goal advances via QStash',
+      );
     cached = new QStashGoalScheduler({ baseUrl, qstashClient });
     return cached;
   }

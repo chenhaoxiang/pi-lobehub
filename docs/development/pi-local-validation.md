@@ -5,8 +5,8 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-verified: 2026-11-11
-verification_scope: Isolated Apple-silicon macOS authenticated Web/backend/CLI fixture, DB migration, local S3/queue/gateway health, device offline/reconnect and original native question single/multi callbacks; no production or business-model turn
+verified: 2026-11-12
+verification_scope: Isolated macOS Web/backend/CLI provider-free P1/P2 baseline plus P5 Goal queue callback and native configuration checks; not production or full P5 business acceptance
 ---
 
 # 全本机验证环境
@@ -32,13 +32,13 @@ pnpm install --ignore-scripts --child-concurrency=1 --network-concurrency=4
 macOS 的 pnpm 自动版本启动器若报官方无 shebang 入口 `ENOEXEC`，可按
 [维护说明](pi-fork-maintenance.md#toolchain-and-installation)，对已核实的
 12.4.1 shell 入口显式用 `sh`，进程内关闭二次版本切换；不改全局配置。
-CLI/根两次无锁安装若解析出不同 Zod，记录并仅对齐本任务 ignored
-node_modules 链接后复核类型，不冒称原 CLI standalone 的历史类型失败已修复。独立 CLI 安装还会把共享 package 的 peer 链接指向 CLI store，实测造成 Web 的 use-sync-external-store CommonJS 互操作失败。优先把长期 CLI 安装放在独立、同 head 的运行树。若已在本任务同树安装，先停止自己记录的 dev 服务，找出 packages/*/node_modules 内指向 apps/cli/node_modules 的链接；只把这些本任务生成目录保全移到 tmp/pi-local/ 下，再用根同版本 pnpm install --prefer-offline --ignore-scripts 重建根 peer 依赖，并刷新自己的 Vite 缓存。不要改任何 tracked 依赖策略或删除其它 worktree。此次先保全18个此类目录后根安装修复，Web/类型均恢复；离线安装缺少 miniflare tarball的失败原件保留，并非宣称离线依赖完整。
+CLI / 根两次无锁安装若解析出不同 Zod，记录并仅对齐本任务 ignored
+node_modules 链接后复核类型，不冒称原 CLI standalone 的历史类型失败已修复。独立 CLI 安装还会把共享 package 的 peer 链接指向 CLI store，实测造成 Web 的 use-sync-external-store CommonJS 互操作失败。优先把长期 CLI 安装放在独立、同 head 的运行树。若已在本任务同树安装，先停止自己记录的 dev 服务，找出 packages/\*/node_modules 内指向 apps/cli/node_modules 的链接；只把这些本任务生成目录保全移到 tmp/pi-local/ 下，再用根同版本 pnpm install --prefer-offline --ignore-scripts 重建根 peer 依赖，并刷新自己的 Vite 缓存。不要改任何 tracked 依赖策略或删除其它 worktree。此次先保全 18 个此类目录后根安装修复，Web / 类型均恢复；离线安装缺少 miniflare tarball 的失败原件保留，并非宣称离线依赖完整。
 
 ## 准备私有合成配置
 
 `keys-local/` 已由仓库忽略，目录 0700、文件 0600；不创建根 `.env`。
-以下仅生成本任务合成用户/JWKS/API key，不读取真实 profile/Keychain/auth：
+以下仅生成本任务合成用户 / JWKS/API key，不读取真实 profile/Keychain/auth：
 
 ```sh
 node scripts/piLocalFixture.mjs prepare
@@ -52,7 +52,7 @@ source keys-local/pi-local-validation/source.env
 默认预留 DB 54321、Redis 63821、S3 19000、QStash 18081、Gateway
 18787/18788；Next/Vite 由原 helper 分配并持久化至 `tmp/pi-local/ports.env`。
 启动前用 `lsof -nP -iTCP:<端口> -sTCP:LISTEN` 和 `docker container inspect`
-检查冲突。占用者不明时换本任务配置的端口/URL，不能杀共享进程或复用外部数据。
+检查冲突。占用者不明时换本任务配置的端口 / URL，不能杀共享进程或复用外部数据。
 源码脚本不自动接管已有容器。
 
 ## 数据库与缓存
@@ -98,7 +98,7 @@ QStash 使用固定 `@upstash/qstash-cli@2.44.2` 的官方二进制。其原 dev
 `127.0.0.1:18081:8080`。可从官方
 `https://artifacts.upstash.com/qstash/versions/2.44.2/qstash-server_2.44.2_linux_arm64.tar.gz`
 下载到 `tmp/pi-local/`，先列出 tar 成员，仅提取普通文件 `qstash`，拒绝
-其它路径/链接，再只读挂载运行；不要执行未知包生命周期：
+其它路径 / 链接，再只读挂载运行；不要执行未知包生命周期：
 
 ```sh
 # QSTASH_BINARY 是已核对的本任务 Linux arm64 qstash 文件绝对路径。
@@ -110,8 +110,14 @@ docker run -d --name "pi-lobehub-$PI_LOCAL_INSTANCE-qstash" \
 
 原 helper 已生成 QStash 本地开发专用 token/signing-key 配置；不能换成托管
 Upstash。容器内 callback 不能使用其自身 localhost，所以 Web 启动进程增加
-`AGENT_RUNTIME_BASE_URL=http://host.docker.internal:$PORT`。此地址仅供
-Docker→宿主 callback；浏览器 `APP_URL` 仍是 `http://localhost:$PORT`。
+`AGENT_RUNTIME_BASE_URL=http://host.docker.internal:$PORT`。相对地址的 Task /
+Verify webhook 则使用已有的 `INTERNAL_APP_URL`，也显式设置成同一 Docker→宿主
+地址；浏览器 `APP_URL` 仍是 `http://localhost:$PORT`，不能拿它替换认证 origin。
+Goal 队列现在也沿用同一覆盖项，未设置时仍回退 `APP_URL`，不改浏览器认证
+地址。P5 曾实际创建 Goal 但未开工：原消息发往容器 localhost，队列明确报告
+`connection refused`。修正后经原 scheduler 向暂停的同一 Goal 发送消息，真实
+签名校验 / HTTP callback 回到 200；暂停 Goal 没有派发模型。这是回调路由
+验真，不代替完整 Task 业务闭环，也不重放原失败消息。
 
 Gateway 用相同 fixture 的 public JWKS 与 service token。先把私有
 `gateway.env` 中 `__PORT__` 替换为已分配的 Next `$PORT`，不打印其它值：
@@ -124,6 +130,7 @@ docker run -d --name "pi-lobehub-$PI_LOCAL_INSTANCE-gateway" \
   --env-file keys-local/pi-local-validation/gateway.env \
   ghcr.io/lobehub/lobehub-gateway@sha256:63647fd8f97407dafd344dd08b509ff74a033b23292cf1d451d804cb09d35759
 export AGENT_RUNTIME_BASE_URL="http://host.docker.internal:$PORT"
+export INTERNAL_APP_URL="$AGENT_RUNTIME_BASE_URL"
 export DEV_HOST=127.0.0.1
 .agents/acceptance/scripts/init-dev-env.sh dev
 ```
@@ -146,7 +153,7 @@ export DEV_HOST=127.0.0.1
 
 不能使用上游 seed 默认 `.lobehub-dev` 去触碰日常 HOME。此入口在
 `keys-local/pi-local-validation/home` 创建本任务 CLI home，只签发当前
-合成用户的两小时 JWT，不读取/复制真实登录态：
+合成用户的两小时 JWT，不读取 / 复制真实登录态：
 
 ```sh
 source keys-local/pi-local-validation/source.env
@@ -158,9 +165,22 @@ JWT 方式也避免 Docker Gateway 把 API-key 登录的宿主 `localhost` 误�
 容器 localhost；这里不是绕过真实用户认证。仅限回环 HTTP，外部 URL 明确拒绝。
 该设备会提供原 CLI 能力，因此只用于自己的合成后端，不能连接线上用户。channel 使用 `cli-` 前缀（本入口为 `cli-pi-local-validation`）；任意不识别的前缀虽然 socket 已连，Web 会把它排除出可执行 CLI 设备，不能用纯连通冒称可用。
 
+设备的 operation token 不是通用用户登录。文档 / 通用验收命令会沿原 CLI 的
+同账号已登录回退，比较真实 subject 并保留当前 workspace；没有同账号登录时
+明确拒绝，不能借别人的身份。业务样本先在专属测试 CLI home 核对 `whoami` 的
+合成账号与 scope，不复制真人 token/profile。仅套用设备 token 或 socket 在线，
+不能声称所有业务写口已经可用。
+
 从另一清洁终端沿同一私有 CLI env 运行 `device list --json`，显式设置
 `HOME="$PWD/keys-local/pi-local-validation/home"` 和 `LOBEHUB_CLI_HOME=.lobehub-local`。
 检查实际 deviceId、channel、registry 和 online，不以 hostname/cwd 推导业务任务。
+
+Pi 的设备命令由连接进程自己的 `PATH` 解析；网页 Agent 上的 `command` 字段
+不等于设备实际运行了该路径，也不为网页增加任意宿主命令能力。隔离验真时在
+启动连接前固定该设备的 Pi 入口与测试 `PI_CODING_AGENT_DIR`，再核对实际
+`--version` 和 RPC `get_state` 的 provider/model/thinking/native session。
+测试 profile 只引用本次受控配置，不复制用户日常凭据 /profile；不能凭版本
+选择器或连接在线就声称模型配置已经对齐。
 停止该连接自己的前台进程后，再查应为 offline；重新连接同一 id 应回 online。
 本次已实际观察 **online → offline → online**，普通查看新增业务模型请求为零。
 
@@ -168,9 +188,9 @@ JWT 方式也避免 Docker Gateway 把 API-key 登录的宿主 `localhost` 误�
 
 - 前台 CLI/S3 正常 Ctrl+C；dev 用原 helper 的 `stop-dev`，它检查 PID、出生时间、cwd 与命令后只停自己记录的进程树。不要 `pkill` 全局 Pi/Node。
 - 暂停本任务 Docker 容器前，先核对精确名称、`pi-lobehub.instance` label 与本任务配置；`docker stop <已核实名称>` 保留数据。不能对共享容器批量 stop/rm。
-- 确认不再需要本 fixture 后，才移除自己的 stopped 容器和 `tmp/pi-local/s3`；数据库无独立持久卷，删除容器会丢弃合成数据。私有配置/profile 由用户决定是否保留，不随普通停止删除。
+- 确认不再需要本 fixture 后，才移除自己的 stopped 容器和 `tmp/pi-local/s3`；数据库无独立持久卷，删除容器会丢弃合成数据。私有配置 /profile 由用户决定是否保留，不随普通停止删除。
 - 本次早期人工创建的四个容器使用 label `pi-lobehub.task=local-validation-01a1` 和显式名称；它们属于同一已核实测试，不冒称自动生成脚本新建。原件保留，不自动改名或覆盖。
-- Gateway 状态在内存，QStash 为本地模拟器，Redis 不持久化；后端/容器重启不承诺在途任务自动恢复。关闭页面与结束服务是两回事，不能写成 24×7 自治已上线。
+- Gateway 状态在内存，QStash 为本地模拟器，Redis 不持久化；后端 / 容器重启不承诺在途任务自动恢复。关闭页面与结束服务是两回事，不能写成 24×7 自治已上线。
 - 用户明确允许本次 localhost 合成账号的现有条款复选框后，沿普通表单登录；随后认证端点核到 `user_agent_testing_001`，真实 agent 页面和设备选择器在线状态已核。当前上游空根路由不能代替可用工作页，使用 `/agent/<id>/<topic>` 的 canonical 路径，不沿旧 `?topic=` 冒称已进入该话题。
-- 已登录 Web→后端→独立 CLI→真实 Pi1.5.0-fork.4→原问答工具的单选和多选回调实测通过：单选返回所点原中文标签；多选先选2再选0、显式提交后返回原序索引 `[0,2]`。原工具 fixture 记录 providerRequests=0；问答由原生 input hook 触发，不冒称真实业务模型发起的工具回合。先前30秒ACK失败、旧前端fixture取消保留，不改标通过。显式模式无额外自由文本/notes，剩余时间明确不会自动提交；无新 VoiceOver/全键盘验收声明。
-- 无真实业务账号、客户数据、已保存凭据或业务模型请求；P3–P6、Desk 卸载、生产/正式发布仍在本轮范围之外。
+- 已登录 Web→后端→独立 CLI→真实 Pi1.5.0-fork.4→原问答工具的单选和多选回调实测通过：单选返回所点原中文标签；多选先选 2 再选 0、显式提交后返回原序索引 `[0,2]`。原工具 fixture 记录 providerRequests=0；问答由原生 input hook 触发，不冒称真实业务模型发起的工具回合。先前 30 秒 ACK 失败、旧前端 fixture 取消保留，不改标通过。显式模式无额外自由文本 /notes，剩余时间明确不会自动提交；无新 VoiceOver / 全键盘验收声明。
+- 无真实业务账号、客户数据、已保存凭据或业务模型请求；P3–P6、Desk 卸载、生产 / 正式发布仍在本轮范围之外。
