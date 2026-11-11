@@ -19,8 +19,11 @@ branches are read-only inputs, not this fork's deployment or installation channe
   The user has now also authorised batch 3 (P3): the existing Task/Goal,
   responsibility, dependency, Pi execution and verification/acceptance/rework
   loop, including normal PR delivery. The user subsequently authorised the
-  remaining P4–P6 implementation, deferring installation and personal trial
-  until it is ready. Reuse this same Change: P4 consumes explicit work/attention/
+  remaining P4–P6 implementation and explicitly selected the Web entry,
+  deferring installation and personal trial until it is ready. The delivered
+  path remains local Web/backend plus an independent Pi CLI device; do not add
+  Electron packaging or installation to this batch. Reuse this same Change:
+  P4 consumes explicit work/attention/
   usage/engineering facts; P5 verifies real scoped samples; P6 may retire only
   owned Desk entries after replacement, data preservation and in-flight safety
   have actually been verified. Never remove Desk prematurely.

@@ -27,23 +27,46 @@ const PI_AUTH_REQUIRED_PATTERNS = [
 const finiteNumber = (value: unknown): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
-const toUsageData = (usage: any): UsageData => {
-  const input = finiteNumber(usage?.input);
-  const output = finiteNumber(usage?.output);
-  const cacheRead = finiteNumber(usage?.cacheRead);
-  const cacheWrite = finiteNumber(usage?.cacheWrite);
-  const reasoning = Math.min(output, finiteNumber(usage?.reasoning));
+const isTokenCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+const toUsageData = (usage: any): UsageData | undefined => {
+  const input: unknown = usage?.input;
+  const output: unknown = usage?.output;
+  const cacheRead: unknown = usage?.cacheRead;
+  const cacheWrite: unknown = usage?.cacheWrite;
+  // Pi's four native buckets are disjoint. Missing or contradictory telemetry
+  // is unavailable, not a measured zero or another copy of the inclusive total.
+  if (
+    !isTokenCount(input) ||
+    !isTokenCount(output) ||
+    !isTokenCount(cacheRead) ||
+    !isTokenCount(cacheWrite)
+  )
+    return;
   const totalInput = input + cacheRead + cacheWrite;
+  const totalTokens = totalInput + output;
+  if (!isTokenCount(totalInput) || !isTokenCount(totalTokens)) return;
+  // The SDK defaults a missing optional upstream summary to 0 (Responses API).
+  // All four actual buckets still establish a total; a nonzero contradiction does not.
+  if (
+    usage?.totalTokens !== undefined &&
+    usage.totalTokens !== 0 &&
+    usage.totalTokens !== totalTokens
+  )
+    return;
+  const reasoning: unknown = usage?.reasoning;
 
   return {
     inputCachedTokens: cacheRead,
     inputCacheMissTokens: input,
     inputWriteCacheTokens: cacheWrite,
-    outputReasoningTokens: reasoning,
-    outputTextTokens: Math.max(0, output - reasoning),
+    ...(isTokenCount(reasoning) && reasoning <= output
+      ? { outputReasoningTokens: reasoning, outputTextTokens: output - reasoning }
+      : {}),
     totalInputTokens: totalInput,
     totalOutputTokens: output,
-    totalTokens: finiteNumber(usage?.totalTokens) || totalInput + output,
+    totalTokens,
   };
 };
 

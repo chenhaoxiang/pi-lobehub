@@ -5,7 +5,7 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-release_scope: 全本机验证版；第一二批已交付，第三批P3已授权实施
+release_scope: 全本机Web验证版；P0–P3及P4状态关注已交付，继续P4–P6，不含Electron打包安装
 ---
 
 # Design
@@ -51,9 +51,9 @@ release_scope: 全本机验证版；第一二批已交付，第三批P3已授权
 
 ## Decisions
 
-### 1. 本机 Web 入口与独立设备执行端先行
+### 1. 本机 Web 入口与独立设备执行端
 
-首条验证路线是本机隔离后端 + 本机 Web UI + 经 `lh connect` 接入的独立本机 CLI 设备，Pi 仍用维护发行版。选择它是为了先验证业务闭环并分开页面与执行生命周期，避免把 Electron 打包、签名和桌面生命周期改造变成首个前置。
+用户于 2026-11-11 明确选择 Web 端并授权继续实施。本轮交付路线确定为本机隔离后端 + 本机 Web UI + 经 `lh connect` 接入的独立本机 CLI 设备，Pi 仍用维护发行版。Web 和上游桌面端共用主要业务组件，但本轮不加入 Electron 打包、安装或桌面生命周期适配；源码复用不等于桌面已验真。先完成业务闭环，并保持页面与执行生命周期分离。
 
 ```text
 用户 → 本机 LobeHub Web → 本机后端 / Goal / Task / Acceptance

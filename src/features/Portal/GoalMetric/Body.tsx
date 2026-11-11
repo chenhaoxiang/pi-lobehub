@@ -473,6 +473,9 @@ const Budget = memo<{ goalId: string; graph: GoalGraphView }>(({ goalId, graph }
 
   return (
     <Flexbox gap={20}>
+      <Text fontSize={12} type="secondary">
+        {t('goalProcess.metricDetail.budget.sourceHint')}
+      </Text>
       <Flexbox gap={14}>
         <span className={styles.label}>{t('goalProcess.metricDetail.budget.controlTitle')}</span>
         <BudgetField

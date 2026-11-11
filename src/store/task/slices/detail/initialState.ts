@@ -1,4 +1,4 @@
-import type { TaskDetailActivity, TaskDetailData } from '@lobechat/types';
+import type { TaskCurrentUsage, TaskDetailActivity, TaskDetailData } from '@lobechat/types';
 
 import { createReplicaState, type ReplicaState } from '@/libs/replica';
 import { type SaveStatus } from '@/types/saveState';
@@ -22,6 +22,8 @@ export interface TaskDetailSliceState {
   activeTopicDrawerTopicId?: string;
   isCreatingTask: boolean;
   isDeletingTask: boolean;
+  taskCurrentUsageMap: Record<string, TaskCurrentUsage>;
+  taskCurrentUsageReplica: ReplicaState<TaskCurrentUsage>;
   taskDetailMap: Record<string, TaskDetailData>;
   /** Replica bookkeeping of `taskDetailMap` (its view). */
   taskDetailReplica: ReplicaState<TaskDetailData>;
@@ -42,6 +44,8 @@ export const initialTaskDetailSliceState: TaskDetailSliceState = {
   isCreatingTask: false,
   isDeletingTask: false,
   taskDetailMap: {},
+  taskCurrentUsageMap: {},
+  taskCurrentUsageReplica: createReplicaState(),
   taskRefIndex: {},
   taskDetailReplica: createReplicaState(),
   taskInstructionRevisionMap: {},
