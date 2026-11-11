@@ -240,5 +240,7 @@ describe('Task explicit engineering original projection', () => {
       truncated: false,
     });
     expect(await new TaskEngineeringModel(db, owner).read('missing-task')).toBeUndefined();
+    await db.update(tasks).set({ isDeleted: true }).where(eq(tasks.id, a.id));
+    expect(await new TaskEngineeringModel(db, owner).read(a.id)).toBeUndefined();
   });
 });
