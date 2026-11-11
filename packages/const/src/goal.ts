@@ -21,6 +21,9 @@ export const goalStatuses = [
 
 export type GoalStatus = (typeof goalStatuses)[number];
 
+/** User-confirmed downstream rework/reuse scope; never an automatic retry. */
+export const GOAL_REWORK_SCOPE_OPTION = 'confirm_rework_scope';
+
 /**
  * Longest title a person may give a goal. A title is a one-line label for the
  * list, the sidebar and the page header; the full ask lives in `requirement`.

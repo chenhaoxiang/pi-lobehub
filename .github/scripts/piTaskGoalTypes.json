@@ -9,7 +9,8 @@
     "../../apps/server/src/services/taskRunner/__tests__/businessClosure.test.ts",
     "../../apps/server/src/services/verify/settle.ownership.test.ts",
     "../../apps/server/src/services/goal/GoalService/__tests__/rework.test.ts",
-    "../../packages/database/src/models/__tests__/task.runClaim.test.ts"
+    "../../packages/database/src/models/__tests__/task.runClaim.test.ts",
+    "../../src/features/AgentGoals/ProcessControl/coordinatorCopy.rework.test.ts"
   ],
   "references": [
     {

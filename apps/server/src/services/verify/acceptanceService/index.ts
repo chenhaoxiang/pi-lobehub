@@ -483,10 +483,31 @@ export class AcceptanceService {
    * completes a task subject that verification alone didn't settle.
    */
   accept = async (acceptanceId: string, comment?: string): Promise<AcceptanceItem> => {
-    const acceptance = await requireDecidableAcceptance(this.acceptanceModel, acceptanceId);
-
-    const settled = await this.stampDecision(acceptanceId, 'accept', comment);
-    await this.acceptanceModel.updateStatus(acceptanceId, 'accepted');
+    const candidate = await requireDecidableAcceptance(this.acceptanceModel, acceptanceId);
+    const goal =
+      candidate.subjectType === 'task'
+        ? await new GoalModel(this.db, this.userId, this.workspaceId).findByGraphTask(
+            candidate.subjectId,
+          )
+        : undefined;
+    const decide = async (service: AcceptanceService) => {
+      const acceptance = await requireDecidableAcceptance(service.acceptanceModel, acceptanceId);
+      const settled = await service.stampDecision(acceptanceId, 'accept', comment);
+      await service.acceptanceModel.updateStatus(acceptanceId, 'accepted');
+      return { acceptance, settled };
+    };
+    // Goal rework also holds this lock. A tab that read the old delivered
+    // report before requeue must re-check the draft round before signing.
+    const { acceptance, settled } = goal
+      ? await this.db.transaction(async (tx) => {
+          await new GoalModel(tx, this.userId, this.workspaceId).lockById(goal.id);
+          return decide(
+            new AcceptanceService(tx, this.userId, this.workspaceId, {
+              actorUserId: this.actorUserId,
+            }),
+          );
+        })
+      : await decide(this);
     notifyAcceptance(acceptanceId, 'session', this.actorUserId);
 
     // A terminal decision settles the current round as surely as a new round landing does — and it
@@ -587,6 +608,10 @@ export class AcceptanceService {
               message: `This goal is archived; restore it before requesting changes (lh goal unarchive ${goal.id})`,
             });
           }
+          await requireDecidableAcceptance(
+            new AcceptanceModel(tx, this.userId, this.workspaceId),
+            acceptanceId,
+          );
           const runId = await this.stampDecision(
             acceptanceId,
             'reject',

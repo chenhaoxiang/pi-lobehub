@@ -76,8 +76,16 @@ jobs:
           apps/server/src/services/verify/settle.ownership.test.ts
           apps/server/src/services/verify/__tests__/driveTaskFromVerify.test.ts
           apps/server/src/services/verify/__tests__/acceptanceTaskLifecycle.test.ts
+          apps/server/src/services/verify/__tests__/acceptanceDecision.test.ts
+          apps/server/src/services/verify/__tests__/acceptanceActor.test.ts
           apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
           apps/server/src/services/verify/__tests__/carryForward.db.test.ts
+      - name: Check rework-scope copy and required user guidance
+        run: >-
+          node node_modules/vitest/vitest.mjs run --project app --maxWorkers=3
+          src/features/AgentGoals/ProcessControl/coordinatorCopy.rework.test.ts
+          src/features/AgentGoals/ProcessControl/coordinatorCopy.test.ts
+          src/features/AgentGoals/GoalDecision/mapping.test.ts
       - name: Check real database run claims and owner isolation
         working-directory: packages/database
         run: node ../../node_modules/vitest/vitest.mjs run --maxWorkers=3 --silent='passed-only' src/models/__tests__/task.runClaim.test.ts src/models/__tests__/taskTopic.takeOver.test.ts src/models/__tests__/taskTopic.reopenSettledRun.test.ts

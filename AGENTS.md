@@ -12,6 +12,7 @@ branches are read-only inputs, not this fork's deployment or installation channe
 - Fork sources, workflow isolation and validation bootstrap: [maintenance](docs/development/pi-fork-maintenance.md).
 - Isolated local Web/backend/device setup and teardown: [local validation](docs/development/pi-local-validation.md).
 - Pi native/config/question/control support and actual limits: [runtime compatibility](docs/development/pi-runtime-compatibility.md).
+- Task/Goal ownership, dispatch, sign-off and rework scope: [business closure](docs/development/pi-task-goal-closure.md).
 - The user has authorised implementation and normal PR delivery of batch 1
   (fork maintenance, safe CI and isolated local environment) and batch 2
   (maintained Pi compatibility, structured questions and scoped control).

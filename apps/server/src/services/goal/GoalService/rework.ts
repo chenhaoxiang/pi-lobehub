@@ -1,13 +1,16 @@
+import { GOAL_REWORK_SCOPE_OPTION } from '@lobechat/const/goal';
+import { isDraftVerifyRun } from '@lobechat/const/verify';
 import type { GoalGraphSnapshot } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
 
 import { TaskModel } from '@/database/models/task';
 import { TaskArchiveModel } from '@/database/models/taskArchive';
+import { VerifyRunModel } from '@/database/models/verifyRun';
 
 import { GOAL_ACCEPTANCE_TASK_TITLE } from '../decideNextMove';
 import type { GoalServiceContext } from './types';
 
-export const CONFIRM_REWORK_SCOPE = 'confirm_rework_scope';
+export const CONFIRM_REWORK_SCOPE = GOAL_REWORK_SCOPE_OPTION;
 
 /** A dependency points from the consumer to its prerequisite. Walk transitively. */
 export const startedReworkDependents = async (
@@ -91,7 +94,15 @@ export const confirmReworkScope = async (
       taskId,
       userId: ctx.userId,
     });
-    await scoped.transitionStatus(goal, 'running', 'Owner confirmed the rework scope', 'user');
+    const stillWaiting = current.decisions.some(
+      (item) => item.status === 'pending' && item.id !== decisionId,
+    );
+    await scoped.transitionStatus(
+      goal,
+      stillWaiting ? 'review' : 'running',
+      'Owner confirmed the rework scope',
+      'user',
+    );
     return resolved;
   });
 
@@ -145,6 +156,21 @@ export const requeueFinalReview = async (
   );
   if (!terminal) return;
   const model = new TaskModel(ctx.db, ctx.userId, ctx.workspaceId);
+  const acceptance = await ctx.acceptanceService.acceptanceModel.findBySubject(
+    'task',
+    terminal.taskId!,
+  );
+  if (acceptance) {
+    // A new unexecuted round fences old-report sign-off and survives status
+    // recomputation. The actual final run folds into this draft when it starts.
+    // Historical verdicts/signatures are never rewritten.
+    const runs = new VerifyRunModel(ctx.db, ctx.userId, ctx.workspaceId);
+    const previous = (await runs.listByAcceptance(acceptance.id)).at(-1);
+    if (!previous || !isDraftVerifyRun(previous)) {
+      const waiting = await runs.create({ plan: previous?.plan ?? [] });
+      await ctx.acceptanceService.attachPolicyRun(waiting.id, acceptance.id);
+    }
+  }
   const task = await model.findById(terminal.taskId!);
   if (task?.status === 'completed') {
     await model.updateStatusIfCurrent(task.id, 'completed', 'backlog', { error: null });

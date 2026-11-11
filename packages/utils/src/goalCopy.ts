@@ -43,6 +43,17 @@ const REASON_PATTERNS: Array<{
   params?: string[];
   pattern: RegExp;
 }> = [
+  {
+    key: 'goalProcess.gate.reworkScopeQuestion',
+    params: ['task', 'tasks'],
+    pattern: /^Confirm the rework scope for (.+?)\.[^\n]*\n([\s\S]+)$/,
+  },
+  {
+    key: 'goalProcess.gate.reworkScopeBasis',
+    params: ['comment', 'tasks'],
+    pattern:
+      /^Changes requested: ([\s\S]*?)\n\nThe rejected delivery has downstream work that already started\.[^\n]*\n([\s\S]+)$/,
+  },
   // Machine gates (see `machineRecovery.ts`): what broke, then what to change.
   {
     key: 'goalProcess.gate.reason.setupWorkingDirectory',

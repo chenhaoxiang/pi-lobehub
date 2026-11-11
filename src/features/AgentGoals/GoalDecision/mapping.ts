@@ -4,6 +4,7 @@ import {
   GOAL_CLARIFICATION_TITLE,
   GOAL_MACHINE_GATE_TITLE,
   GOAL_MANAGER_QUESTION_TITLE,
+  GOAL_REWORK_SCOPE_OPTION,
 } from '@lobechat/const/goal';
 import type { GoalDecisionOption } from '@lobechat/types';
 
@@ -22,7 +23,7 @@ import type {
  * - `clarify` — a clarification round, asked as its own form
  */
 export type GoalGateCategory =
-  'agentQuestion' | 'clarify' | 'goalAcceptance' | 'judgment' | 'machine';
+  'agentQuestion' | 'clarify' | 'goalAcceptance' | 'judgment' | 'machine' | 'reworkScope';
 
 /** The ids the coordinator writes on its own gates; anything else is an Agent's answer. */
 const COORDINATOR_OPTION_IDS = new Set([
@@ -39,6 +40,7 @@ export const goalGateCategory = (gate: {
   nodeTitle?: string | null;
   options?: GoalDecisionOption[] | null;
 }): GoalGateCategory => {
+  if (gate.options?.some((option) => option.id === GOAL_REWORK_SCOPE_OPTION)) return 'reworkScope';
   if (gate.nodeTitle === GOAL_CLARIFICATION_TITLE) return 'clarify';
   if (gate.nodeTitle === GOAL_MANAGER_QUESTION_TITLE) return 'agentQuestion';
   if (gate.nodeTitle === GOAL_MACHINE_GATE_TITLE) return 'machine';
@@ -80,9 +82,10 @@ export const toGateQuestion = (
   options: (decision.options ?? [])
     .filter((option) => option.id !== GOAL_CLARIFICATION_OPTION.answer)
     .map((option) => {
-      const description = option.description
-        ? [option.description, copy.cascade?.(option)].filter(Boolean).join(' ')
-        : copy.describe(option);
+      const description =
+        option.description && option.id !== GOAL_REWORK_SCOPE_OPTION
+          ? [option.description, copy.cascade?.(option)].filter(Boolean).join(' ')
+          : copy.describe(option);
       return {
         ...(description ? { description } : {}),
         id: option.id,
@@ -124,7 +127,9 @@ export const toGateAnswer = (
 export const gateAnswerProblem = (answer: {
   optionId: string;
   resolution?: string;
-}): 'correctionRequired' | undefined =>
-  answer.optionId === GOAL_BATCH_BREAK_OPTION.revise && !answer.resolution?.trim()
-    ? 'correctionRequired'
-    : undefined;
+}): 'correctionRequired' | 'scopeRequired' | undefined => {
+  if (answer.resolution?.trim()) return undefined;
+  if (answer.optionId === GOAL_REWORK_SCOPE_OPTION) return 'scopeRequired';
+  if (answer.optionId === GOAL_BATCH_BREAK_OPTION.revise) return 'correctionRequired';
+  return undefined;
+};

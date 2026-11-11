@@ -30,7 +30,7 @@ import type { GoalServiceContext } from './types';
 import { GOAL_ENDED_STATUSES } from './utils';
 
 /** A Goal whose delivery the owner can still send back for rework. */
-const REOPENABLE_GOAL_STATUSES = new Set(['achieved', 'running']);
+const REOPENABLE_GOAL_STATUSES = new Set(['achieved', 'running', 'review']);
 
 /**
  * What answering a gate does to the Task it was opened for. The coordinator's
@@ -395,10 +395,13 @@ export const reopenForChanges = async (
         },
       },
     });
-    if (current.status !== 'running') {
-      await goals.updateStatus(goal.id, 'running');
+    const nextStatus = currentGraph.decisions.some((item) => item.status === 'pending')
+      ? 'review'
+      : 'running';
+    if (current.status !== nextStatus) {
+      await goals.updateStatus(goal.id, nextStatus);
       await graphModel
-        .recordGoalStatus(goal.id, current.status, 'running', reason)
+        .recordGoalStatus(goal.id, current.status, nextStatus, reason)
         .catch((error) => console.error('[GoalService] failed to record goal status:', error));
     }
     return true;

@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { getTestDB } from '@/database/core/getTestDB';
 import { AcceptanceModel } from '@/database/models/acceptance';
 import { TaskModel } from '@/database/models/task';
+import { VerifyRunModel } from '@/database/models/verifyRun';
+import { dispatchAcceptanceRepair } from '@/server/routers/lambda/_helpers/acceptanceRepairDispatch';
 import { TaskRunnerService } from '@/server/services/taskRunner';
+import { AcceptanceService } from '@/server/services/verify/acceptanceService';
 
 import { registerGoalServiceTestCleanup } from '../../testUtils';
 import { GoalService } from '../index';
@@ -112,6 +115,78 @@ describe('Goal rework belongs to the exact responsible Task', () => {
         c.content.includes('Reuse its unaffected outputs'),
       ),
     ).toBe(true);
+  });
+
+  it('cannot sign the old final report after its review has been requeued', async () => {
+    const { service, graph, model, terminal, decision } = await openScope();
+    const acceptanceModel = new AcceptanceModel(db, owner);
+    const acceptance = (await acceptanceModel.findBySubject('task', terminal.taskId!))!;
+    const runs = new VerifyRunModel(db, owner);
+    const oldRound = await runs.create({
+      acceptanceId: acceptance.id,
+      roundIndex: 1,
+      status: 'passed',
+    });
+    await acceptanceModel.updateStatus(acceptance.id, 'delivered');
+    await service.decide(
+      graph.goal.id,
+      decision.id,
+      'confirm_rework_scope',
+      'Rework the source and repeat final review.',
+    );
+    const delivery = new AcceptanceService(db, owner);
+    await delivery.recomputeStatus(acceptance.id);
+    await expect(delivery.accept(acceptance.id)).rejects.toThrow('still in progress');
+    expect((await model.findById(terminal.taskId!))?.status).toBe('backlog');
+    expect((await runs.findById(oldRound.id))?.status).toBe('passed');
+    expect(await runs.listByAcceptance(acceptance.id)).toHaveLength(2);
+  });
+
+  it('keeps a second rejection handoff while another scope gate holds the Goal', async () => {
+    const service = new GoalService(db, owner);
+    const graph = await service.create({
+      requirement: 'A complete result',
+      tasks: ['Source', { title: 'Report', dependsOn: ['Source'] }],
+      title: 'Two rejections',
+    });
+    const model = new TaskModel(db, owner);
+    const acceptanceModel = new AcceptanceModel(db, owner);
+    const delivery = new AcceptanceService(db, owner);
+    const first = await service.tick(graph.goal.id);
+    await model.updateStatus(first.taskId!, 'completed');
+    await service.tick(graph.goal.id);
+    const second = await service.tick(graph.goal.id);
+    await model.updateStatus(second.taskId!, 'completed');
+    await service.tick(graph.goal.id);
+    const rejectAndHandoff = async (id: string) => {
+      const acceptance = (await acceptanceModel.findBySubject('task', id))!;
+      await new VerifyRunModel(db, owner).create({
+        acceptanceId: acceptance.id,
+        roundIndex: 1,
+        status: 'passed',
+      });
+      await acceptanceModel.updateStatus(acceptance.id, 'delivered');
+      const rejected = await delivery.reject(acceptance.id, 'Please revise this delivery.');
+      await dispatchAcceptanceRepair(
+        { serverDB: db, userId: owner } as Parameters<typeof dispatchAcceptanceRepair>[0],
+        delivery,
+        rejected,
+        'Please revise this delivery.',
+      );
+    };
+    await rejectAndHandoff(first.taskId!);
+    const firstGate = (await service.graph(graph.goal.id)).decisions.find(
+      (d) => d.status === 'pending',
+    )!;
+    await rejectAndHandoff(second.taskId!);
+    expect((await model.findById(second.taskId!))?.status).toBe('backlog');
+    expect(
+      (await service.graph(graph.goal.id)).nodes.find((n) => n.taskId === second.taskId)?.status,
+    ).toBe('active');
+    expect((await service.graph(graph.goal.id)).goal.status).toBe('review');
+    expect(
+      (await service.graph(graph.goal.id)).decisions.find((d) => d.id === firstGate.id)?.status,
+    ).toBe('pending');
   });
 
   it.each(['source', 'final'])(

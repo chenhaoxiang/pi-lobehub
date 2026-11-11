@@ -5,8 +5,8 @@ owner_repository: chenhaoxiang/pi-lobehub
 status: active
 truth_mode: maintained
 created: 2026-11-10
-verified: 2026-11-10
-verification_scope: 维护分支与工作流隔离的源码/本地无模型测试；不代表发布或运行验收
+verified: 2026-11-11
+verification_scope: 维护分支、工作流隔离与 P3 范围 CI 的源码/本地检查；不代表发布或真实模型业务验收
 ---
 
 # Pi LobeHub fork maintenance
@@ -31,12 +31,14 @@ This includes publishing, production deploys, generated-content pushes, automati
 fork synchronization, previews and the original broad test matrix. The original
 conditions remain conjunctive inside that owner restriction.
 
-`pi-fork-check.yml` is the fork's only initially enabled validation entry. It
-runs read-only, provider-free policy checks and does not install the whole app,
-borrow repository secrets or publish artifacts. It is a maintenance check, NOT
-proof that the application, every package or the Pi integration passes.
-Future code slices must add their actual regression/type/build checks; required
-check names are bound only after their exact-head runs exist and pass.
+`pi-fork-check.yml` is the fork's only enabled validation workflow. Its original
+`fork-contract` job uses isolated tools for provider-free workflow/RPC checks.
+P3 adds `task-goal-closure`: root-workspace installation without lifecycle
+scripts, scoped server/UI/database regressions, and application/new-test types.
+Neither job borrows repository secrets, installs the standalone CLI, publishes
+artifacts or proves production/business-model acceptance. The upstream root
+still has no lockfile; this registry installation is not an immutable build.
+Required check names are bound only after their exact-head runs exist and pass.
 
 To verify locally without executing dependency lifecycle scripts:
 
