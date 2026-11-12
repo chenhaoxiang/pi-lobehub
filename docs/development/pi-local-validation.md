@@ -113,8 +113,10 @@ Upstash。容器内 callback 不能使用其自身 localhost，所以 Web 启动
 `AGENT_RUNTIME_BASE_URL=http://host.docker.internal:$PORT`。相对地址的 Task /
 Verify webhook 则使用已有的 `INTERNAL_APP_URL`，也显式设置成同一 Docker→宿主
 地址；浏览器 `APP_URL` 仍是 `http://localhost:$PORT`，不能拿它替换认证 origin。
-Goal 队列现在也沿用同一覆盖项，未设置时仍回退 `APP_URL`，不改浏览器认证
-地址。P5 曾实际创建 Goal 但未开工：原消息发往容器 localhost，队列明确报告
+事件触发的 Goal advance 现在也沿用同一覆盖项，未设置时仍回退 `APP_URL`，
+不改浏览器认证地址。本片没有启用周期 sweep，其既有 fanout 仍只取 `APP_URL`，
+不据本片声明它或长期守护已适配。P5 曾实际创建 Goal 但未开工：原消息发往容器
+localhost，队列明确报告
 `connection refused`。修正后经原 scheduler 向暂停的同一 Goal 发送消息，真实
 签名校验 / HTTP callback 回到 200；暂停 Goal 没有派发模型。这是回调路由
 验真，不代替完整 Task 业务闭环，也不重放原失败消息。
