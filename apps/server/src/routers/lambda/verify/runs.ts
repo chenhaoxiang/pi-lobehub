@@ -3,6 +3,7 @@ import type { VerifyRunContext, VerifyRunScenario } from '@lobechat/types';
 import pMap from 'p-map';
 import { z } from 'zod';
 
+import { uniqueViolationConstraint } from '@/database/utils/uniqueViolation';
 import { router } from '@/libs/trpc/lambda';
 import { FileService } from '@/server/services/file';
 import { purgeVerifyRun } from '@/server/services/verify';
@@ -168,18 +169,41 @@ export const runsRouter = router({
         }),
       ),
     )
-    .mutation(async ({ ctx, input }) =>
-      ctx.runModel.create({
-        context: input.context,
-        goal: input.goal,
-        metadata: input.metadata,
-        operationId: input.operationId,
-        plan: input.plan,
-        scenario: input.scenario,
-        source: input.source ?? 'agent-testing',
-        title: input.title,
-      }),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      // An Agent Run owns at most one VerifyRun. Acceptance CLI retries may
+      // arrive after the runtime already created the canonical row; reuse it
+      // without overwriting its frozen plan/results. When the row does not yet
+      // exist, keep the full authored round payload on the first insert and
+      // converge only a concurrent operation-id conflict.
+      const createRun = () =>
+        ctx.runModel.create({
+          context: input.context,
+          goal: input.goal,
+          metadata: input.metadata,
+          operationId: input.operationId,
+          plan: input.plan,
+          scenario: input.scenario,
+          source: input.source ?? 'agent-testing',
+          title: input.title,
+        });
+
+      if (input.operationId) {
+        const existing = await ctx.runModel.findByOperation(input.operationId);
+        if (existing) return existing;
+
+        try {
+          return await createRun();
+        } catch (error) {
+          if (uniqueViolationConstraint(error) !== 'verify_runs_operation_id_unique') throw error;
+          return ctx.runModel.ensureForOperation(input.operationId, {
+            goal: input.goal,
+            title: input.title,
+          });
+        }
+      }
+
+      return createRun();
+    }),
   getRun: verifyProcedure.input(verifyRunIdInputSchema).query(async ({ ctx, input }) => {
     const run = await ctx.runModel.findById(input.verifyRunId);
     if (run) assertOperationInScope(ctx, run.operationId);

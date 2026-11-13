@@ -13,6 +13,7 @@ const modelMocks = vi.hoisted(() => ({
   createEvidence: vi.fn(),
   purgeVerifyRun: vi.fn(),
   createRun: vi.fn(),
+  ensureForOperation: vi.fn(),
   deleteResult: vi.fn(),
   deleteRun: vi.fn(),
   findFileById: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock('@/database/models/verifyRun', () => ({
     return {
       create: modelMocks.createRun,
       delete: modelMocks.deleteRun,
+      ensureForOperation: modelMocks.ensureForOperation,
       findByOperation: modelMocks.findRunByOperation,
       findById: modelMocks.findRunById,
       update: modelMocks.updateRun,
@@ -61,7 +63,9 @@ vi.mock('@/database/models/verifyRun', () => ({
 vi.mock('@/database/models/file', async (importOriginal) => {
   const actual = await importOriginal<typeof FileModelModule>();
   class FileModel extends actual.FileModel {
-    findById = modelMocks.findFileById as unknown as actual.FileModel['findById'];
+    findById = modelMocks.findFileById as unknown as InstanceType<
+      typeof actual.FileModel
+    >['findById'];
   }
   return { ...actual, FileModel };
 });
@@ -469,6 +473,86 @@ describe('verifyRouter', () => {
 
       expect(modelMocks.findRunById).not.toHaveBeenCalled();
       expect(modelMocks.updateRun).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createRun — operation-linked idempotency', () => {
+    it('reuses the canonical VerifyRun for an existing Agent operation', async () => {
+      const existing = { id: 'run-existing', operationId: 'op-existing', status: 'planned' };
+      modelMocks.findRunByOperation.mockResolvedValueOnce(existing);
+
+      await expect(
+        createCaller().createRun({
+          goal: 'same operation',
+          operationId: 'op-existing',
+          source: 'agent-testing',
+          title: 'retrying acceptance round',
+        }),
+      ).resolves.toEqual(existing);
+
+      expect(modelMocks.findRunByOperation).toHaveBeenCalledWith('op-existing');
+      expect(modelMocks.ensureForOperation).not.toHaveBeenCalled();
+      expect(modelMocks.createRun).not.toHaveBeenCalled();
+    });
+
+    it('keeps the full authored payload when an operation has no VerifyRun yet', async () => {
+      modelMocks.findRunByOperation.mockResolvedValueOnce(undefined);
+      modelMocks.createRun.mockResolvedValueOnce({ id: 'run-created' });
+
+      await expect(
+        createCaller().createRun({
+          context: { branch: 'feat/report' },
+          goal: 'new operation',
+          metadata: { interactionCost: { total: 1 } },
+          operationId: 'op-new',
+          plan: [
+            {
+              id: 'check-1',
+              index: 0,
+              required: true,
+              title: 'done',
+              verifierType: 'llm',
+              verifierConfig: {},
+              onFail: 'manual',
+            },
+          ],
+          scenario: 'coding',
+          source: 'agent-testing',
+          title: 'first acceptance round',
+        }),
+      ).resolves.toEqual({ id: 'run-created' });
+
+      expect(modelMocks.findRunByOperation).toHaveBeenCalledWith('op-new');
+      expect(modelMocks.createRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          context: { branch: 'feat/report' },
+          goal: 'new operation',
+          metadata: { interactionCost: { total: 1 } },
+          operationId: 'op-new',
+          plan: expect.any(Array),
+          scenario: 'coding',
+          source: 'agent-testing',
+          title: 'first acceptance round',
+        }),
+      );
+      expect(modelMocks.ensureForOperation).not.toHaveBeenCalled();
+    });
+
+    it('converges a concurrent operation-id conflict onto the canonical VerifyRun', async () => {
+      modelMocks.findRunByOperation.mockResolvedValueOnce(undefined);
+      modelMocks.createRun.mockRejectedValueOnce({
+        cause: { code: '23505', constraint: 'verify_runs_operation_id_unique' },
+      });
+      modelMocks.ensureForOperation.mockResolvedValueOnce({ id: 'run-race-winner' });
+
+      await expect(
+        createCaller().createRun({ operationId: 'op-race', title: 'race' }),
+      ).resolves.toEqual({ id: 'run-race-winner' });
+
+      expect(modelMocks.ensureForOperation).toHaveBeenCalledWith('op-race', {
+        goal: undefined,
+        title: 'race',
+      });
     });
   });
 
