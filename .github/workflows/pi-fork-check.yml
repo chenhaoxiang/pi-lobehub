@@ -83,6 +83,7 @@ jobs:
           apps/server/src/services/verify/__tests__/acceptanceSettledCheck.test.ts
           apps/server/src/services/verify/__tests__/acceptanceLifecycle.test.ts
           apps/server/src/services/verify/__tests__/carryForward.db.test.ts
+          apps/server/src/routers/lambda/verify/index.test.ts
           apps/server/src/routers/lambda/__tests__/integration/task.engineering.integration.test.ts
           apps/server/src/routers/lambda/__tests__/integration/task.currentUsage.integration.test.ts
           apps/server/src/services/heterogeneousAgent/HeterogeneousPersistenceHandler

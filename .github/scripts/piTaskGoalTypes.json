@@ -6,6 +6,7 @@
   "files": [
     "../../apps/server/src/services/taskRunner/index.startup.test.ts",
     "../../apps/server/src/services/goal/scheduler/impls/index.test.ts",
+    "../../apps/server/src/routers/lambda/verify/index.test.ts",
     "../../apps/server/src/services/taskRunner/__tests__/runBinding.test.ts",
     "../../apps/server/src/services/taskRunner/__tests__/businessClosure.test.ts",
     "../../apps/server/src/services/verify/settle.ownership.test.ts",
