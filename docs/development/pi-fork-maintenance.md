@@ -58,6 +58,33 @@ The audit is not a sync completion, release, installation or production result.
 A later sync PR must bind the selected commit set, conflict decisions, affected
 checks and a fresh fork-contract/task-goal-closure result before changing `main`.
 
+## 2026-11-14 core execution/task wave
+
+The first selective candidate wave is `sync/upstream-core-wave-20261114` and
+contains six upstream fixes, cherry-picked in dependency order:
+
+- `5c81da51a746` — tell Goal planning which Tasks already passed verification;
+- `211e7466e2c5` — settle a Goal stranded on a planning turn that never ran;
+- `580c3e82097e` — settle an Agent Runtime operation whose first step failed to dispatch;
+- `976b02dff59e` — classify mid-stream provider socket drops as interruption;
+- `1c4ee6ba2fc1` — remove the non-existent CLI Task `pending` status;
+- `408c7d60438d` — keep the Goal supervision panel bound to its record.
+
+The wave deliberately excludes the larger batch/acceptance UI changes (`2e8ad9ff70`,
+`0003e726ea`) because they conflict with the fork's existing `unknown/waiting`
+and Acceptance presentation, and excludes the broad Verify replica refactors,
+Router refactors, Channels, Desktop, Music, LobeBench, provider and workflow
+changes. No upstream workflow or release automation is enabled or merged.
+
+Conflict resolution kept the upstream GoalChatProvider reconnect/bound-topic fix
+and its tests. The five-file dry-run conflict set is otherwise not silently
+resolved in this wave. The candidate's narrow validation currently records 37
+selected tests passing, full TypeScript type-check passing, and changed-file lint
+with one existing `set-state-in-effect` warning. The full lifecycle file has one
+pre-existing archive-order assertion failure reproduced on both the candidate and
+clean `origin/main`; it is not claimed as a green new sync signal and remains a
+separate follow-up. The candidate is not `main` until its exact PR checks pass.
+
 ## Workflow boundary
 
 Every inherited workflow job is restricted to the exact upstream repository.
