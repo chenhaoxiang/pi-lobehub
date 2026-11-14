@@ -24,6 +24,40 @@ checks before a regular-merge PR into our main. Never replace fork history,
 force-push shared refs or use one-click Sync Fork. Existing tags, licence and
 attribution remain intact. Physical main checkouts remain read-only.
 
+## 2026-11-14 upstream/canary audit
+
+The first sync audit was performed from fork `main` `cdd731c721c54274665ae8b7c4822fb8dfac5a12`
+against read-only `upstream/canary` `a8424d204a7ed1eb36985ebdfa6eac8041615392`.
+The common base remains `01665ddf425ff824b554993115e969c51bd1f4c5`; the fork is
+47 commits ahead and 191 commits behind the community canary. A dry-run merge
+was started in the dedicated `sync/upstream-canary-20261114` worktree and then
+aborted without writing `main` or the remote. It exposed five semantic conflicts:
+
+- `packages/heterogeneous-agents/src/rpc/piRpcClient.test.ts` — upstream's
+  supported-version test versus the fork's maintained Pi-version/fork-version
+  rejection matrix;
+- `src/features/AgentGoals/ProcessControl/Graph/batchModel.ts` and
+  `BatchGroups.tsx` — upstream's `pending/held/accepted` batch phase model versus
+  the fork's `unknown/waiting` and existing acceptance presentation;
+- `src/features/AgentTasks/AgentTaskDetail/TaskDetailSections.tsx` — upstream
+  layout versus the fork's Task Engineering and scoped current-usage sections;
+- `src/features/GlobalApprovalNotification/index.tsx` — upstream goal-island
+  changes versus the fork's task-input and dismissal handling.
+
+The delta is broad: 2,893 changed paths on each side of the shared base, including
+Goal/Task/Verify, Pi RPC, CLI, database, desktop, workflows and SPA state. The
+first wave must therefore be selective rather than a blind 191-commit merge.
+Candidate review order is: (1) server/runtime correctness fixes that preserve the
+fork's Goal/Task/Verify/Pi contracts; (2) narrowly related CLI and Web fixes with
+focused tests; (3) unrelated channels, music, LobeBench and desktop features only
+when explicitly selected. `.github` workflow/release changes remain excluded from
+an upstream merge unless the fork contract is audited separately; upstream Actions
+must not be enabled by synchronization.
+
+The audit is not a sync completion, release, installation or production result.
+A later sync PR must bind the selected commit set, conflict decisions, affected
+checks and a fresh fork-contract/task-goal-closure result before changing `main`.
+
 ## Workflow boundary
 
 Every inherited workflow job is restricted to the exact upstream repository.
