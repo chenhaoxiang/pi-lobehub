@@ -6,12 +6,12 @@ status: active
 truth_mode: maintained
 created: 2026-11-10
 verified: 2026-11-14
-release_scope: P0–P5已按当前范围交付；用户已授权继续实施P6，安装与本人试用暂缓，P6按替代和数据保全条件执行
+release_scope: P0–P6已按当前本机范围交付；Web 作为统一工作入口，生产部署、Electron 发布、用户日常安装和历史数据迁移仍未执行
 ---
 
 # Tasks
 
-用户已明确授权实施第一批（P0/P1）与第二批（P2），包括正常 PR / 审查 / 合并交付。范围取自 [proposal](proposal.md)，职责与技术决策取自 [design](design.md)。第三批 P3 已经 PR4 合入 main（70081e9），合前 / 合后 CI 均通过。用户随后明确要求继续完成剩余 P4–P6，暂不安装或交给本人试用；P6 仍先满足替代、数据保全和在途安全条件。未勾选项仍未交付。阶段是依赖而非逐步审批，已授权范围内连续完成实现、适用验证和代码闸；必要技术条件失败只停受影响动作，不能用规划或合成证据冒充真实环境通过。
+用户已明确授权实施第一批（P0/P1）与第二批（P2），包括正常 PR / 审查 / 合并交付。范围取自 [proposal](proposal.md)，职责与技术决策取自 [design](design.md)。第三批 P3 已经 PR4 合入 main（70081e9），合前 / 合后 CI 均通过。用户随后要求继续完成 P4–P6，并最终授权执行 Pi Desk 的受控退出。P0–P6 当前本机范围已完成；Web 仍是统一工作入口，历史数据与可逆归档保留，生产部署、Electron 发布、用户日常安装和历史数据迁移不在当前范围。阶段是依赖而非逐步审批，已授权范围内连续完成实现、适用验证和代码闸；必要技术条件失败只停受影响动作，不能用规划或合成证据冒充真实环境通过。
 
 ## 阶段依赖与交付切片
 
@@ -177,7 +177,7 @@ run/session 别名是明确合成数据，不是 P5 原生模型业务样本。�
 - **6.2 资料报告任务**：T-14 `task_B1aZSs5MKXIo` 的 Acceptance `bb16b9cd-2ff0-4d10-bbcc-7e4ab5750ce9` 已接受，必需检查 `31f73c9c-4cf3-470a-a6a3-490bc4805a1a` 为 `passed`。报告保留 Web 原生问题“业务闭环与负责人分工”、来源 URL/时间/准备时间/SHA-256、fallback 失败原件、返工轮次和未知边界；答案来自合成测试执行者，不代表 chx 个人业务签收。
 - **6.3 页面 / 进程边界**：`tmp/p5-business/web-closed-proof.json` 记录真实 Web 页面关闭后同一原生 Pi session 仍继续产出；`backend-restored-proof.json` 记录精确受管后端故障停止 / 恢复、恢复前不可达、恢复后 HTTP 302、模型调用 0。证据只证明页面关闭与本机进程故障的区别，不宣称跨服务重启自动接续或 24×7 服务。
 - **6.4 重试 / 用量 / 未知**：`tmp/p5-business/model-requests.jsonl` 保留 500、429、设备离线、失败、完成和恢复的逐次账本；本轮固定 `codex-local-8319/gpt-6.1-sol`、`max`，累计上限 220，账本当前 `admitted=141`，费用仍为 `unknown`。未知请求未盲重放，新增授权未促成 provider/model 切换；单样本不推导普遍 ROI。
-- **6.5 兼容矩阵 / 回退**：`tmp/p5-business/samples/report/one-person-workflow.md` 与 `sources.json` 已上传到 Task 验收并接受，明确源码、测试、运行、安装、桌面、生产发布和人类签收的分层；维护 fork 当前合并 head 为 `e3f6b7d4e6b32323d81862074290c214b8e89800`。P5 交付通过不等于已安装用户版、已发布生产或已完成 Desk 退出。
+- **6.5 兼容矩阵 / 回退**：`tmp/p5-business/samples/report/one-person-workflow.md` 与 `sources.json` 已上传到 Task 验收并接受，明确源码、测试、运行、安装、桌面、生产发布和人类签收的分层；维护 fork 当前合并 head 为 `7e41b51a70287af382b1bef82fcbac5cf5ad5e6a`。P5/P6 本机范围已交付，不等于已安装用户版、已发布生产、已完成 Electron 发布或已迁移历史数据。
 
 ## 7. P6：Desk 运行退出与数据保全
 
