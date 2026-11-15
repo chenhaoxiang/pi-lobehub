@@ -771,7 +771,7 @@ describe('buildBatchModel acceptance', () => {
         }),
         acceptances: {
           m3: { id: 'acc-3', status: 'accepted' },
-          m4: { id: 'acc-4', status: 'passed' },
+          m4: { id: 'acc-4', status: 'delivered' },
           m5: { id: 'acc-5', status: 'accepted' },
           p1: { id: 'acc-p1', status: 'accepted' },
         },
