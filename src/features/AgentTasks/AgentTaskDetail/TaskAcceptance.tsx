@@ -49,6 +49,7 @@ import { useChatStore } from '@/store/chat';
 import { useGlobalStore } from '@/store/global';
 import { useTaskStore } from '@/store/task';
 import { taskDetailSelectors } from '@/store/task/selectors';
+import { useVerifyStore } from '@/store/verify';
 
 import GoalRoundTimeline from './GoalRoundTimeline';
 import { resolveTaskAcceptanceRequirement } from './resolveTaskAcceptanceProjection';
@@ -220,6 +221,8 @@ const TaskAcceptance = memo<TaskAcceptanceProps>(({ variant = 'default' }) => {
           verifyCriteriaIds: null,
         });
         await verifyService.deleteAcceptance(acceptanceSubject.id, purge);
+        useVerifyStore.getState().removeAcceptancesFromLists([acceptanceSubject.id]);
+        void useVerifyStore.getState().refreshAcceptanceLists();
         await mutateSubject();
       },
     });
