@@ -76,6 +76,7 @@ export default {
 
   'response.contentSafetyNotice':
     'This reply was limited for content safety reasons. If this happens often, you may temporarily lose access to this model.',
+  'goalBatch.cell.accepted': 'Accepted',
   'goalBatch.cell.backlog': 'Not run',
   'goalBatch.cell.done': 'Done',
   'goalBatch.cell.human': 'Needs you',
@@ -198,6 +199,7 @@ export default {
   'goalBatch.round.reviseEdge': 'Sent back · revise',
   'goalBatch.round.title': 'Round {{revision}}',
   'goalBatch.status.done': 'All done',
+  'goalBatch.status.held': 'Waiting for your release',
   'goalBatch.status.human': '{{count}} need you',
   'goalBatch.status.pending': 'Not started',
   'goalBatch.status.running': 'In progress',

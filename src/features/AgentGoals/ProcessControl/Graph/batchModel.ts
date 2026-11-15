@@ -34,6 +34,8 @@ export type BatchCellState =
   'backlog' | 'running' | 'human' | 'done' | 'stale' | 'waiting' | 'unknown';
 
 export interface BatchCell {
+  /** Done, and its delivery's Acceptance was signed off. */
+  accepted?: true;
   /** 0-based position inside its wave. */
   index: number;
   /** The node that delivers this unit on the main roster, once released. */
@@ -55,6 +57,8 @@ export type BatchUnitOrigin =
   | { index: number; kind: 'wave'; wave: number };
 
 export interface BatchProbe {
+  /** Done, and its delivery's Acceptance was signed off. */
+  accepted?: true;
   /** Which run of the unit this is, when it was sent back and run again in the round (2, 3…). */
   attempt?: number;
   from?: BatchUnitOrigin;
@@ -200,6 +204,11 @@ export const buildBatchModel = (graph: GoalGraphView, batchId: string): BatchMod
   );
   const cellOf = (id?: string): BatchCellState =>
     id && superseded.has(id) ? 'stale' : batchCellState(id ? graph.byId[id] : undefined, waitingOn);
+  // A done square whose delivery a person signed off carries the mark of it.
+  const acceptedOf = (id?: string) =>
+    id && cellOf(id) === 'done' && graph.byId[id]?.acceptance?.status === 'accepted'
+      ? { accepted: true as const }
+      : undefined;
 
   const templates = members.filter(
     (view) => view.node.kind === 'finding' && view.node.title === GOAL_BATCH_TEMPLATE_TITLE,
@@ -278,6 +287,7 @@ export const buildBatchModel = (graph: GoalGraphView, batchId: string): BatchMod
     (waves[wave] ??= []).push(
       main
         ? {
+            ...(!later && acceptedOf(main.node.id)),
             index,
             nodeId: main.node.id,
             reopenedIn: laterRound,
@@ -287,6 +297,7 @@ export const buildBatchModel = (graph: GoalGraphView, batchId: string): BatchMod
             wave,
           }
         : {
+            ...acceptedOf(later?.node.id),
             index,
             // Never released here: the square follows the round that runs it.
             nodeId: later?.node.id,
@@ -390,6 +401,7 @@ export const buildBatchModel = (graph: GoalGraphView, batchId: string): BatchMod
               state: batchCellState(graph.byId[id], waitingOn),
             })),
           }),
+          ...acceptedOf(view.node.id),
           from: r > 0 ? originOf(view) : undefined,
           nodeId: view.node.id,
           state: cellOf(view.node.id),
@@ -499,16 +511,30 @@ export const countCells = (cells: { state: BatchCellState }[]) => {
   return counts;
 };
 
-/** A group animates only when one of its current units is recorded running. */
-export const batchUnitsState = (cells: { state: BatchCellState }[]): BatchCellState => {
+export type BatchUnitsPhase = BatchCellState | 'held' | 'pending';
+
+/** Derive a group phase while preserving the fork's unknown/waiting states. */
+export const unitsPhase = (
+  cells: { state: BatchCellState }[],
+  started: boolean,
+  held = false,
+): BatchUnitsPhase => {
   const counts = countCells(cells);
   if (counts.human) return 'human';
   if (counts.unknown) return 'unknown';
+  if (counts.waiting) return 'waiting';
   if (counts.stale && counts.stale + counts.done < cells.length) return 'stale';
   if (cells.length > 0 && counts.done + counts.stale === cells.length) return 'done';
-  if (counts.running) return 'running';
-  if (counts.waiting) return 'waiting';
+  if (held && !counts.running) return 'held';
+  if (!started && !counts.running) return 'pending';
+  if (counts.running || started) return 'running';
   return 'backlog';
+};
+
+/** Backward-compatible state projection for callers that do not know round metadata. */
+export const batchUnitsState = (cells: { state: BatchCellState }[]): BatchCellState => {
+  const phase = unitsPhase(cells, false);
+  return phase === 'held' || phase === 'pending' ? 'backlog' : phase;
 };
 
 /**
