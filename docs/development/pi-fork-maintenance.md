@@ -106,7 +106,24 @@ passing, full TypeScript type-check passing, and changed-file lint with one
 existing `set-state-in-effect` warning. It is still a candidate PR until the
 fork-contract and task-goal-closure checks pass.
 
-## Workflow boundary
+## 2026-11-15 Verify/Acceptance replica wave
+
+The next selected wave is the pair of upstream Verify replica refactors:
+
+- `f97762817208` — move Acceptance lists, comments and related reads onto
+  `@lobechat/replica`;
+- `195092f8f2c8` — move Verify reports, tracing, rubrics, Goal criteria and plan
+  skills onto the same replica boundary.
+
+Both commits apply cleanly on the current fork after the Batch/Acceptance wave.
+The fork's existing Task Acceptance, scoped Usage/Engineering sections and
+P5 evidence contracts remain present. Narrow validation currently reports 60
+selected tests passing, full TypeScript type-check passing, and changed-file lint
+with five non-blocking warnings. This wave changes client replica state and
+Acceptance/Verify reads only; it does not change server acceptance semantics,
+Pi execution, production deployment or user installation. The acceptance viewer
+redesign and unrelated Verify/Router runtime changes remain separate waves.
+
 
 Every inherited workflow job is restricted to the exact upstream repository.
 This includes publishing, production deploys, generated-content pushes, automatic
