@@ -85,6 +85,27 @@ pre-existing archive-order assertion failure reproduced on both the candidate an
 clean `origin/main`; it is not claimed as a green new sync signal and remains a
 separate follow-up. The candidate is not `main` until its exact PR checks pass.
 
+## 2026-11-15 Batch/Acceptance UI wave
+
+The second selective wave is limited to two upstream changes:
+
+- `2e8ad9ff70e8` — distinguish a gate-held batch round as `held`/waiting for
+  release instead of in progress;
+- `0003e726ea34` — mark an accepted delivery on batch squares and the Task
+  Acceptance checklist title.
+
+The conflict resolution deliberately preserves fork semantics: `unknown` and
+`waiting` remain distinct from `held`, Task Engineering and Current Usage are
+not removed, and the task-input/goal-dismissal island remains authoritative in
+this fork. The upstream Verify replica refactor and the broader Task detail
+layout/project picker are excluded because they require additional dependent
+commits and would otherwise create an unreviewed state-layer migration.
+
+The wave currently has 31 batch-model tests and 50 Batch/Acceptance/island tests
+passing, full TypeScript type-check passing, and changed-file lint with one
+existing `set-state-in-effect` warning. It is still a candidate PR until the
+fork-contract and task-goal-closure checks pass.
+
 ## Workflow boundary
 
 Every inherited workflow job is restricted to the exact upstream repository.
