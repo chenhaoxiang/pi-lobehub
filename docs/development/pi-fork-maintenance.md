@@ -106,6 +106,16 @@ passing, full TypeScript type-check passing, and changed-file lint with one
 existing `set-state-in-effect` warning. It is still a candidate PR until the
 fork-contract and task-goal-closure checks pass.
 
+## 2026-11-16 Acceptance viewer maintenance slice
+
+The full upstream Acceptance viewer redesign is intentionally deferred: its
+large conflict surface overlaps the replica migration, evidence review UI,
+StyleX migration, and review-round persistence. This slice only imports
+`683d0a27f1`, which keeps controls stable when an expanded check row wraps its
+title. The six existing Check/Acceptance focused suites plus the two replica
+suites pass (`91/91`). No Acceptance data contract, Task/Goal state, Pi runtime,
+production or desktop behavior changes in this slice.
+
 ## 2026-11-15 Verify/Acceptance replica wave
 
 The next selected wave is the pair of upstream Verify replica refactors:
