@@ -150,7 +150,7 @@ describe('AgentRuntime with unresolvable tool names', () => {
       { kind: 'unresolved', name: 'lobe-skills____executeCode' },
     ]);
 
-    expect(state.status).toBe('done');
+    expect(state.status).toBe('error');
     expect(events.find((event) => event.type === 'error')).toBeUndefined();
     expect(events.at(-1)).toMatchObject({
       reason: 'tool_name_unresolved',

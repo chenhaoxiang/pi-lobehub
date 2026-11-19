@@ -20,10 +20,25 @@ export const finish =
     // re-trigger after completion. Best-effort — the adapter swallows failures.
     await transports.operationStore?.clearRunningMark();
 
-    // State snapshots are opt-in; internal done events always retain the state.
+    const isFailure = reason === 'tool_name_unresolved';
+    const newState = structuredClone(state);
+    newState.lastModified = new Date().toISOString();
+    newState.status = isFailure ? 'error' : 'done';
+    if (isFailure && !newState.error) {
+      newState.error = {
+        errorType: reason,
+        message: reasonDetail ?? 'The model repeatedly requested tools that do not exist.',
+        type: reason,
+      };
+    }
+
+    // State snapshots are opt-in; internal terminal events always retain the
+    // state. An unresolved tool name is a runtime failure, not a successful
+    // delivery: persist the error status before any server lifecycle consumer
+    // observes the step completion event.
     await transports.stream.publishEvent({
       data: {
-        ...(state.host?.includeFinalState === true && { finalState: { ...state, status: 'done' } }),
+        ...(state.host?.includeFinalState === true && { finalState: newState }),
         phase: 'execution_complete',
         reason,
         reasonDetail,
@@ -31,10 +46,6 @@ export const finish =
       stepIndex: operation.stepIndex,
       type: 'step_complete',
     });
-
-    const newState = structuredClone(state);
-    newState.lastModified = new Date().toISOString();
-    newState.status = 'done';
 
     const events: AgentEvent[] = [{ finalState: newState, reason, reasonDetail, type: 'done' }];
 

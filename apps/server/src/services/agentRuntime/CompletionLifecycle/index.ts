@@ -64,7 +64,10 @@ const log = debug('lobe-server:completion-lifecycle');
  */
 /** Terminal reasons after which the topic's agent may be woken again. */
 const isTopicRunSettledReason = (reason: string) =>
-  reason !== 'interrupted' && reason !== 'waiting_for_human' && reason !== 'waiting_for_async_tool';
+  reason !== 'interrupted' &&
+  reason !== 'tool_name_unresolved' &&
+  reason !== 'waiting_for_human' &&
+  reason !== 'waiting_for_async_tool';
 
 export const isSuccessLikeCompletionReason = (reason: string): boolean =>
   reason === 'done' ||
@@ -447,6 +450,9 @@ export class CompletionLifecycle {
         }
       }
 
+      // TaskLifecycle consumes onComplete to park failed Task work for review;
+      // its bridge guard below suppresses creator delivery for this runtime
+      // failure. Keep the hook so the Task does not remain running forever.
       await hookDispatcher.dispatch(operationId, 'onComplete', event, state?.host?.hooks);
 
       // Recall the user when a run finishes with a deliverable while they may be
@@ -535,7 +541,7 @@ export class CompletionLifecycle {
         );
       }
 
-      if (reason === 'error' || reason === 'interrupted') {
+      if (reason === 'error' || reason === 'tool_name_unresolved' || reason === 'interrupted') {
         after(async () => {
           const userId = runOrigin.userId || this.userId;
           await settleFailedRepair(this.serverDB, userId, operationId, this.workspaceId);
@@ -563,7 +569,7 @@ export class CompletionLifecycle {
         await this.registerFileWorks(operationId, state);
       }
 
-      if (reason === 'error') {
+      if (reason === 'error' || reason === 'tool_name_unresolved') {
         await hookDispatcher.dispatch(operationId, 'onError', event, state?.host?.hooks);
 
         const assistantMessageId =

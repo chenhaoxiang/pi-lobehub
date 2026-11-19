@@ -395,7 +395,7 @@ export class TaskLifecycleService {
           error,
         );
       }
-    } else if (reason === 'error') {
+    } else if (reason === 'error' || reason === 'tool_name_unresolved') {
       if (
         topicId &&
         !(await this.settleRunRow(
@@ -554,7 +554,10 @@ export class TaskLifecycleService {
     // (driveTaskFromVerify): the delivery isn't accepted until verify settles, so
     // the creator must not receive/act on the output here — if verify later fails,
     // the unaccepted output would already have been consumed.
-    if (!verifyBound) await this.bridgeResultToCreator(params);
+    // An unresolved tool-name stop has no accepted delivery to hand back to
+    // the creator. Keep the failure on the Task; only Verify/Acceptance or a
+    // later successful run may create the creator callback.
+    if (!verifyBound && reason !== 'tool_name_unresolved') await this.bridgeResultToCreator(params);
 
     // Heartbeat re-arm: re-read task state (status / context may have just
     // been mutated by the branches above) and decide whether to publish the

@@ -125,7 +125,8 @@ export function createThreadMetadataCallbacks(
           status = ThreadStatus.Completed;
           break;
         }
-        case 'error': {
+        case 'error':
+        case 'tool_name_unresolved': {
           status = ThreadStatus.Failed;
           break;
         }
@@ -258,7 +259,8 @@ export function createThreadHooks(
             status = ThreadStatus.Completed;
             break;
           }
-          case 'error': {
+          case 'error':
+          case 'tool_name_unresolved': {
             status = ThreadStatus.Failed;
             break;
           }

@@ -47,7 +47,8 @@ export function statusForReason(
   | 'waiting_for_async_tool'
   | 'waiting_for_client' {
   switch (reason) {
-    case 'error': {
+    case 'error':
+    case 'tool_name_unresolved': {
       return 'error';
     }
     case 'interrupted': {
@@ -72,7 +73,7 @@ const addUsage = (earlier?: number, run?: number): number | undefined =>
   earlier === undefined ? run : earlier + (run ?? 0);
 
 const threadStatusForReason = (reason: string): ThreadStatus => {
-  if (reason === 'error') return ThreadStatus.Failed;
+  if (reason === 'error' || reason === 'tool_name_unresolved') return ThreadStatus.Failed;
   if (reason === 'interrupted') return ThreadStatus.Cancel;
   return ThreadStatus.Completed;
 };
@@ -154,6 +155,7 @@ export async function persistCompletion(
     : reason === 'max_steps' ||
         reason === 'cost_limit' ||
         reason === 'tool_call_repeat_limit' ||
+        reason === 'tool_name_unresolved' ||
         reason === 'waiting_for_human' ||
         reason === 'waiting_for_async_tool' ||
         reason === 'waiting_for_client'

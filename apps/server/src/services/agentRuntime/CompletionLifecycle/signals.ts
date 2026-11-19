@@ -79,9 +79,9 @@ export async function emitSignalEvents(
       return [];
     }
 
-    let selfIteration =
-      reason === 'error' ? undefined : extractSelfIterationCompletionPayload(state);
-    if (reason !== 'error' && !selfIteration) {
+    const isFailure = reason === 'error' || reason === 'tool_name_unresolved';
+    let selfIteration = isFailure ? undefined : extractSelfIterationCompletionPayload(state);
+    if (!isFailure && !selfIteration) {
       try {
         const operation = await deps.agentOperationModel.findById(operationId);
         const operationMetadata = operation?.metadata;
@@ -135,7 +135,7 @@ export async function emitSignalEvents(
         );
       }
     }
-    if (reason !== 'error') {
+    if (!isFailure) {
       log(
         '[completion-lifecycle] emit agent.execution.completed op=%s userId=%s assistant=%s metaAssistant=%s selfIteration=%s',
         operationId,
@@ -147,69 +147,68 @@ export async function emitSignalEvents(
           : 'ABSENT',
       );
     }
-    const completionSignalEmission =
-      reason === 'error'
-        ? await emitAgentSignalSourceEvent(
-            {
-              payload: {
-                agentId: runOrigin.agentId,
-                errorMessage: extractErrorMessage(state?.error),
-                operationId,
-                reason,
-                serializedContext: undefined,
-                topicId: runOrigin.topicId,
-                turnCount: getLlmCallCount(state),
-              },
-              sourceId: `${operationId}:complete:${reason}`,
-              sourceType: 'agent.execution.failed',
-            },
-            {
+    const completionSignalEmission = isFailure
+      ? await emitAgentSignalSourceEvent(
+          {
+            payload: {
               agentId: runOrigin.agentId,
-              db: deps.serverDB,
-              userId: runOrigin.userId || deps.userId,
-              workspaceId: deps.workspaceId,
+              errorMessage: extractErrorMessage(state?.error),
+              operationId,
+              reason,
+              serializedContext: undefined,
+              topicId: runOrigin.topicId,
+              turnCount: getLlmCallCount(state),
             },
-            { ignoreError: true },
-          )
-        : await emitAgentSignalSourceEvent(
-            {
-              payload: {
-                agentId: runOrigin.agentId,
-                // Anchor the deferred skill synthesis to the completed assistant
-                // turn: the completion-stage skill handler walks this id back
-                // to the user message to read the parked candidate and seeds
-                // the skill under the assistant group — instead of synthesizing
-                // from the user prompt alone at inbound time. Resolved from
-                // the final assistant message row when operation metadata omits
-                // it (the server execAgent path).
-                anchorMessageId: assistantMessageId,
-                assistantMessageId,
-                operationId,
-                // Carry the completion reason so completion-stage consumers can
-                // tell a finished turn from a non-terminal pause
-                // (waiting_for_async_tool / waiting_for_human), which reuse this
-                // same source.
-                reason,
-                // Self-iteration runs carry their finalState tool outcomes here
-                // (the one point finalState is in hand) so the completion policy
-                // can project receipts. Undefined for every other agent.
-                selfIteration,
-                serializedContext: undefined,
-                steps: getLlmCallCount(state),
-                topicId: runOrigin.topicId,
-                turnCount: getLlmCallCount(state),
-              },
-              sourceId: `${operationId}:complete:${reason}`,
-              sourceType: 'agent.execution.completed',
-            },
-            {
+            sourceId: `${operationId}:complete:${reason}`,
+            sourceType: 'agent.execution.failed',
+          },
+          {
+            agentId: runOrigin.agentId,
+            db: deps.serverDB,
+            userId: runOrigin.userId || deps.userId,
+            workspaceId: deps.workspaceId,
+          },
+          { ignoreError: true },
+        )
+      : await emitAgentSignalSourceEvent(
+          {
+            payload: {
               agentId: runOrigin.agentId,
-              db: deps.serverDB,
-              userId: runOrigin.userId || deps.userId,
-              workspaceId: deps.workspaceId,
+              // Anchor the deferred skill synthesis to the completed assistant
+              // turn: the completion-stage skill handler walks this id back
+              // to the user message to read the parked candidate and seeds
+              // the skill under the assistant group — instead of synthesizing
+              // from the user prompt alone at inbound time. Resolved from
+              // the final assistant message row when operation metadata omits
+              // it (the server execAgent path).
+              anchorMessageId: assistantMessageId,
+              assistantMessageId,
+              operationId,
+              // Carry the completion reason so completion-stage consumers can
+              // tell a finished turn from a non-terminal pause
+              // (waiting_for_async_tool / waiting_for_human), which reuse this
+              // same source.
+              reason,
+              // Self-iteration runs carry their finalState tool outcomes here
+              // (the one point finalState is in hand) so the completion policy
+              // can project receipts. Undefined for every other agent.
+              selfIteration,
+              serializedContext: undefined,
+              steps: getLlmCallCount(state),
+              topicId: runOrigin.topicId,
+              turnCount: getLlmCallCount(state),
             },
-            { ignoreError: true },
-          );
+            sourceId: `${operationId}:complete:${reason}`,
+            sourceType: 'agent.execution.completed',
+          },
+          {
+            agentId: runOrigin.agentId,
+            db: deps.serverDB,
+            userId: runOrigin.userId || deps.userId,
+            workspaceId: deps.workspaceId,
+          },
+          { ignoreError: true },
+        );
 
     log(
       '[completion-lifecycle] emission done op=%s reason=%s deduped=%s',

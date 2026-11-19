@@ -124,6 +124,28 @@ describe('resolveTools executors', () => {
     },
   );
 
+  it('marks consecutive unresolved tool stops as runtime errors', async () => {
+    const result = await finish(host)(
+      {
+        reason: 'tool_name_unresolved',
+        reasonDetail: 'The model repeatedly requested tools that do not exist.',
+        type: 'finish',
+      },
+      createState(),
+    );
+
+    expect(result.newState.status).toBe('error');
+    expect(result.newState.error).toMatchObject({
+      errorType: 'tool_name_unresolved',
+      type: 'tool_name_unresolved',
+    });
+    expect(publishEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ reason: 'tool_name_unresolved' }),
+      }),
+    );
+  });
+
   it('persists blocked tools as rejected tool messages and continues', async () => {
     const instruction: Extract<AgentInstruction, { type: 'resolve_blocked_tools' }> =
       createBlockedInstruction(createToolCall());
