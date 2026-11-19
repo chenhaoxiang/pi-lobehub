@@ -31,6 +31,7 @@ import * as dependencies from './dependencies';
 import * as documents from './documents';
 import * as queries from './queries';
 import { resolveRefs } from './refs';
+import { lockProjectRelations } from './relations';
 import * as rows from './rows';
 import type { InterruptedRunningTopic, OrphanedRunningTopic } from './scheduling';
 import * as scheduling from './scheduling';
@@ -69,12 +70,28 @@ export class TaskModel {
     data: Omit<NewTask, 'id' | 'identifier' | 'seq' | 'createdByUserId'>,
     options: { maxRetries?: number } = {},
   ): Promise<TaskItem> {
+    if (data.parentTaskId) {
+      return this.db.transaction((tx) =>
+        new TaskModel(tx as LobeChatDatabase, this.userId, this.workspaceId).createInternal(
+          data,
+          options,
+        ),
+      );
+    }
+    return this.createInternal(data, options);
+  }
+
+  private async createInternal(
+    data: Omit<NewTask, 'id' | 'identifier' | 'seq' | 'createdByUserId'>,
+    options: { maxRetries?: number },
+  ): Promise<TaskItem> {
     const createData = normalizeTaskRefs(data);
 
     // Keep the invariant at the write boundary, including direct model callers.
     // Parent references here are canonical database ids; the service resolves
     // display identifiers before calling the model.
     if (createData.parentTaskId) {
+      await lockProjectRelations(this.ctx, createData.parentTaskId);
       const parent = await this.findById(createData.parentTaskId);
       if (!parent) throw new Error('Task not found');
       if (createData.projectId && createData.projectId !== parent.projectId) {
@@ -101,6 +118,48 @@ export class TaskModel {
 
   async findById(id: string): Promise<TaskItem | null> {
     return rows.findById(this.ctx, id);
+  }
+
+  /** Serialize project/parent/dependency changes with every relation writer. */
+  async assertProjectPatchSafe(
+    taskId: string,
+    patch: { parentTaskId?: string | null; projectId?: string | null },
+  ): Promise<void> {
+    if (patch.parentTaskId === undefined && patch.projectId === undefined) return;
+
+    await lockProjectRelations(this.ctx, taskId, patch.parentTaskId);
+    const task = await this.findById(taskId);
+    if (!task) return;
+
+    const targetProjectId = patch.projectId === undefined ? task.projectId : patch.projectId;
+    if (patch.projectId !== undefined && patch.projectId !== null) {
+      const project = await new ProjectModel(this.db, this.userId, this.workspaceId).findById(
+        patch.projectId,
+      );
+      if (!project) throw new Error('Project not found');
+    }
+
+    if (targetProjectId !== task.projectId) {
+      if (patch.parentTaskId === undefined && task.parentTaskId) {
+        const parent = await this.findById(task.parentTaskId);
+        if (parent && parent.projectId !== targetProjectId)
+          throw new Error('Subtask must belong to the same project as its parent');
+      }
+      if (await this.hasSubtaskOutsideProject(taskId, targetProjectId))
+        throw new Error('Task has subtasks in its current project. Move or detach them first');
+      if (await this.hasDependencyOutsideProject(taskId, targetProjectId))
+        throw new Error('Task dependencies cannot cross project boundaries. Remove them first');
+    }
+
+    if (patch.parentTaskId !== undefined && patch.parentTaskId !== null) {
+      if (patch.parentTaskId === taskId) throw new Error('Task cannot be parented to itself');
+      const parent = await this.findById(patch.parentTaskId);
+      if (!parent || parent.projectId !== targetProjectId)
+        throw new Error('Parent task must belong to the same project');
+      const descendants = await this.findAllDescendants(taskId);
+      if (descendants.some(({ id }) => id === parent.id))
+        throw new Error('Task cannot be parented to its own descendant');
+    }
   }
 
   /** Recover creation when a repair request lost its response before linking the Task. */
@@ -148,6 +207,14 @@ export class TaskModel {
     data: Partial<Omit<NewTask, 'id' | 'identifier' | 'seq' | 'createdByUserId'>>,
   ): Promise<TaskItem | null> {
     if (Object.keys(data).length === 0) return this.findById(id);
+    if (data.parentTaskId !== undefined || data.projectId !== undefined) {
+      return this.db.transaction((tx) =>
+        new TaskModel(tx as LobeChatDatabase, this.userId, this.workspaceId).updateProjectRelation(
+          id,
+          data,
+        ),
+      );
+    }
 
     // A reassignment is not a plain column write: the row being moved away from
     // decides whether the previous assignee's cloud-repo selection has to go,
@@ -171,6 +238,26 @@ export class TaskModel {
 
       return rows.writeRow(this.ctx, runner, id, withStaleReposCleared(before, data));
     });
+  }
+
+  private async updateProjectRelation(
+    id: string,
+    data: Partial<Omit<NewTask, 'id' | 'identifier' | 'seq' | 'createdByUserId'>>,
+  ): Promise<TaskItem | null> {
+    await this.assertProjectPatchSafe(id, {
+      parentTaskId: data.parentTaskId,
+      projectId: data.projectId,
+    });
+    if (data.assigneeAgentId === undefined) return rows.writeRow(this.ctx, this.db, id, data);
+
+    const [before] = await this.db
+      .select({ assigneeAgentId: tasks.assigneeAgentId, config: tasks.config })
+      .from(tasks)
+      .where(and(eq(tasks.id, id), taskOwnership(this.ctx)))
+      .for('update')
+      .limit(1);
+    if (!before) return null;
+    return rows.writeRow(this.ctx, this.db, id, withStaleReposCleared(before, data));
   }
 
   async delete(id: string): Promise<boolean> {
@@ -304,6 +391,10 @@ export class TaskModel {
 
   async findAllDescendants(rootTaskId: string): Promise<TaskItem[]> {
     return tree.findAllDescendants(this.ctx, rootTaskId);
+  }
+
+  async hasSubtaskOutsideProject(taskId: string, projectId: string | null): Promise<boolean> {
+    return tree.hasSubtaskOutsideProject(this.ctx, taskId, projectId);
   }
 
   async getTaskTree(rootTaskId: string): Promise<TaskItem[]> {
@@ -535,6 +626,21 @@ export class TaskModel {
   // ========== Dependencies ==========
 
   async addDependency(taskId: string, dependsOnId: string, type: string = 'blocks'): Promise<void> {
+    await this.db.transaction((tx) =>
+      new TaskModel(tx as LobeChatDatabase, this.userId, this.workspaceId).addDependencyInternal(
+        taskId,
+        dependsOnId,
+        type,
+      ),
+    );
+  }
+
+  private async addDependencyInternal(
+    taskId: string,
+    dependsOnId: string,
+    type: string,
+  ): Promise<void> {
+    await lockProjectRelations(this.ctx, taskId, undefined, [dependsOnId]);
     const dependencyTasks = await this.findByIds([taskId, dependsOnId]);
     const task = dependencyTasks.find(({ id }) => id === taskId);
     const dependsOn = dependencyTasks.find(({ id }) => id === dependsOnId);
@@ -559,6 +665,10 @@ export class TaskModel {
 
   async removeDependency(taskId: string, dependsOnId: string): Promise<void> {
     return dependencies.removeDependency(this.ctx, taskId, dependsOnId);
+  }
+
+  async hasDependencyOutsideProject(taskId: string, projectId: string | null): Promise<boolean> {
+    return dependencies.hasDependencyOutsideProject(this.ctx, taskId, projectId);
   }
 
   async getDependencies(taskId: string) {

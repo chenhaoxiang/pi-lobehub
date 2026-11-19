@@ -49,6 +49,8 @@ export interface TaskListQuery {
 
 export interface TaskListValue {
   items: TaskListItem[];
+  /** The query's project scope, so a task moved elsewhere can drop from this list. */
+  projectId?: string;
   /** The query's status filter, so a status change can drop a row it no longer matches. */
   statuses?: TaskStatus[];
   total: number;
@@ -115,6 +117,10 @@ export const taskGroupKeyByStatus: Record<TaskStatus, string> = {
   scheduled: 'running',
 };
 
+/** A patched task leaves a project-scoped list when its id no longer matches. */
+const leftProjectScope = (scope: string | undefined, task: TaskListItem) =>
+  !!scope && task.projectId !== undefined && task.projectId !== scope;
+
 /** Tasks are addressed by stable database id across the task store. */
 export const taskListEntity: ReplicaEntityAdapter<TaskListValue, TaskListItem> = {
   has: (data, id) => data.items.some((task) => task.id === id),
@@ -131,6 +137,7 @@ export const taskListEntity: ReplicaEntityAdapter<TaskListValue, TaskListItem> =
       // A row whose new status falls outside the query's filter leaves the list.
       if (next && data.statuses && !data.statuses.includes(next.status as TaskStatus))
         next = undefined;
+      if (next && leftProjectScope(data.projectId, next)) next = undefined;
       if (next !== task) changed = true;
       if (next === undefined) removed++;
       else items.push(next);

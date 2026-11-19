@@ -180,6 +180,7 @@ export class TaskListSliceActionImpl {
       get,
       merge: (incoming, _confirmed, query) => ({
         items: incoming.data,
+        ...(query.projectId && { projectId: query.projectId }),
         ...(query.statuses && { statuses: query.statuses }),
         total: incoming.total,
       }),

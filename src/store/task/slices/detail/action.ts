@@ -17,6 +17,7 @@ import { t } from 'i18next';
 import { cacheScope, createReplicaSlice, recordLens, revalidateReplica } from '@/libs/replica';
 import { subscribeCacheScope } from '@/libs/replica/cacheScopeEvents';
 import { useClientDataSWR } from '@/libs/swr';
+import { normalizeAsyncError } from '@/libs/swr/normalizeError';
 import { taskService } from '@/services/task';
 import { workService } from '@/services/work';
 import { goalGraphResource } from '@/store/goal/projection';
@@ -62,6 +63,8 @@ export interface TaskUpdatePayload {
   name?: string;
   parentTaskId?: string | null;
   priority?: number;
+  /** `null` takes the task out of its project. */
+  projectId?: string | null;
 }
 
 export interface TaskUpdateOptions {
@@ -618,6 +621,7 @@ export class TaskDetailSliceActionImpl {
     // The assignee chip flips on this dispatch; the feed row it explains must
     // land in the same beat, not after the mutation *and* the detail refetch.
     const current = this.#get().taskDetailMap[id];
+    const previousProjectId = current?.projectId;
     const userState = useUserStore.getState();
     const actorId = options?.actorAgentId ? undefined : userProfileSelectors.userId(userState);
     const optimisticActivities = current
@@ -701,6 +705,7 @@ export class TaskDetailSliceActionImpl {
       ...task,
       ...(data.name !== undefined ? { name: data.name } : {}),
       ...(data.priority !== undefined ? { priority: data.priority } : {}),
+      ...(data.projectId !== undefined ? { projectId: data.projectId } : {}),
       ...(data.assigneeAgentId !== undefined ? { assigneeAgentId: data.assigneeAgentId } : {}),
       ...(data.assigneeUserId !== undefined ? { assigneeUserId: data.assigneeUserId } : {}),
     }));
@@ -717,6 +722,13 @@ export class TaskDetailSliceActionImpl {
       // optimistic dispatch above is reconciled from the source of record.
       onError: async (error) => {
         collections.rollback();
+        if (data.projectId !== undefined) {
+          this.internal_dispatchTaskDetail({
+            id,
+            type: 'updateTaskDetail',
+            value: { projectId: previousProjectId },
+          });
+        }
         await refreshPatchedTargets();
         /**
          * The rollback refetch has already replaced the editor's failed local
@@ -730,6 +742,15 @@ export class TaskDetailSliceActionImpl {
               ...options,
               source: 'external',
             }));
+        // A refused project move repeats on retry until its links are moved, and the
+        // server's reason is English-only, so the toast says what to do instead.
+        if (data.projectId !== undefined && normalizeAsyncError(error).code === 'BAD_REQUEST') {
+          saveToast(error, {
+            hideCause: true,
+            title: t('taskProject.moveRefused', { ns: 'chat' }),
+          });
+          return;
+        }
         saveToast(error, { retry });
       },
       setStatus: (status) => this.#get().internal_setTaskSaveStatus(id, status),
@@ -746,7 +767,10 @@ export class TaskDetailSliceActionImpl {
       assigneeAgentId !== undefined ||
       assigneeUserId !== undefined ||
       data.parentTaskId !== undefined ||
-      data.priority !== undefined
+      data.priority !== undefined ||
+      // Project-scoped lists and boards must refetch both the old and target
+      // project queries after a move or clear.
+      data.projectId !== undefined
     ) {
       await Promise.all([
         this.#get().refreshTaskList(),
