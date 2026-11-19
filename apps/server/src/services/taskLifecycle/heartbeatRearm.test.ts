@@ -131,6 +131,41 @@ describe('TaskLifecycleService.maybeRearmHeartbeat', () => {
     });
   });
 
+  it('increments consecutiveFailures on unresolved-tool failure', async () => {
+    await rearm(baseTask(), 'tool_name_unresolved');
+
+    expect(fakeScheduler.scheduleNextTopic).toHaveBeenCalled();
+    expect(updateContext).toHaveBeenCalledWith('task-1', {
+      scheduler: expect.objectContaining({ consecutiveFailures: 1 }),
+    });
+  });
+
+  it('blows the fuse on unresolved-tool failure and stops re-arming', async () => {
+    const ctx: { scheduler: TaskSchedulerContext } = {
+      scheduler: { consecutiveFailures: 2 },
+    };
+
+    await rearm(baseTask({ context: ctx }), 'tool_name_unresolved');
+
+    expect(fakeScheduler.scheduleNextTopic).not.toHaveBeenCalled();
+    expect(updateContext).toHaveBeenCalledWith('task-1', {
+      scheduler: { consecutiveFailures: 3 },
+    });
+  });
+
+  it('keeps the unresolved-tool fuse closed on subsequent failures', async () => {
+    const ctx: { scheduler: TaskSchedulerContext } = {
+      scheduler: { consecutiveFailures: 3 },
+    };
+
+    await rearm(baseTask({ context: ctx }), 'tool_name_unresolved');
+
+    expect(fakeScheduler.scheduleNextTopic).not.toHaveBeenCalled();
+    expect(updateContext).toHaveBeenCalledWith('task-1', {
+      scheduler: { consecutiveFailures: 4 },
+    });
+  });
+
   it('blows the fuse at 3 consecutive errors and stops re-arming', async () => {
     const ctx: { scheduler: TaskSchedulerContext } = {
       scheduler: { consecutiveFailures: 2 },

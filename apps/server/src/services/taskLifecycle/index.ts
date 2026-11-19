@@ -74,12 +74,15 @@ const log = debug('task-lifecycle');
 const TERMINAL_STATUSES = new Set(['canceled', 'completed', 'failed']);
 const isTerminal = (status: string) => TERMINAL_STATUSES.has(status);
 
-// Consecutive automation-tick 'error' reasons after which we pause the task /
+// Consecutive automation-tick failure reasons after which we pause the task /
 // stop re-arming and let the urgent brief surface for human attention. A single
 // transient upstream hiccup (429 / network / upstream 500) must NOT permanently
 // stop a recurring task — only this many *consecutive* failures do. Hardcoded
 // for now; move to task.config later if it needs to be tunable per-task.
 const AUTOMATION_FAILURE_FUSE = 3;
+
+const isTaskFailureReason = (reason: string): boolean =>
+  reason === 'error' || reason === 'tool_name_unresolved';
 
 export interface TopicCompleteParams {
   /** Structured terminal error type (e.g. `InsufficientBudgetForModel`) from the
@@ -395,7 +398,7 @@ export class TaskLifecycleService {
           error,
         );
       }
-    } else if (reason === 'error' || reason === 'tool_name_unresolved') {
+    } else if (isTaskFailureReason(reason)) {
       if (
         topicId &&
         !(await this.settleRunRow(
@@ -778,7 +781,7 @@ export class TaskLifecycleService {
     const sched = ctx.scheduler ?? {};
     let consecutiveFailures = sched.consecutiveFailures ?? 0;
 
-    if (reason === 'error') {
+    if (isTaskFailureReason(reason)) {
       consecutiveFailures += 1;
       if (consecutiveFailures >= AUTOMATION_FAILURE_FUSE) {
         log(
