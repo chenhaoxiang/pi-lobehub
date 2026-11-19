@@ -77,6 +77,18 @@ export const taskDetailLayoutStyles = createStaticStyles(({ css }) => ({
       color: ${cssVar.colorTextDescription};
     }
   `,
+  projectInheritedHint: css`
+    display: block;
+    width: 100%;
+    padding-inline: 8px;
+    font-size: 12px;
+    line-height: 18px;
+    color: ${cssVar.colorTextDescription};
+
+    @container task-detail (width >= ${TASK_DETAIL_SIDEBAR_MIN_WIDTH}px) {
+      padding-block-end: 4px;
+    }
+  `,
   propertyItem: css`
     max-width: 100%;
     height: 28px;

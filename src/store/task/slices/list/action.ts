@@ -197,7 +197,6 @@ export class TaskListSliceActionImpl {
         ...(query.excludeStatuses && { excludeStatuses: query.excludeStatuses }),
         groupBy: query.groupBy,
         groups: incoming.data,
-        ...(query.projectId && { projectId: query.projectId }),
       }),
       set,
       stateKey: 'taskGroupListReplica',

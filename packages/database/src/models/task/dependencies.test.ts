@@ -77,6 +77,31 @@ describe('TaskModel.hasDependencyOutsideProject', () => {
     expect(await member.hasDependencyOutsideProject(shared.id, target)).toBe(true);
   });
 
+  it('serializes a project move and dependency write without leaving a cross-project link', async () => {
+    const model = new TaskModel(serverDB, ownerId, workspaceId);
+    const source = await projectIn('task-dep-project-race-a');
+    const target = await projectIn('task-dep-project-race-b');
+    const task = await model.create({ instruction: 'task', projectId: source });
+    const blocker = await model.create({ instruction: 'blocker', projectId: target });
+
+    await Promise.allSettled([
+      serverDB.transaction(async (tx) => {
+        const txModel = new TaskModel(tx as LobeChatDatabase, ownerId, workspaceId);
+        await txModel.assertProjectPatchSafe(task.id, { projectId: target });
+        await txModel.update(task.id, { projectId: target });
+      }),
+      model.addDependency(task.id, blocker.id),
+    ]);
+
+    const moved = (await model.findById(task.id))!;
+    const dependencies = await model.getDependencies(task.id);
+    expect(
+      dependencies.every(
+        (dependency) => dependency.dependsOnId !== blocker.id || moved.projectId === target,
+      ),
+    ).toBe(true);
+  });
+
   it('ignores a trashed linked task and links of another scope', async () => {
     const model = new TaskModel(serverDB, ownerId, workspaceId);
     const target = await projectIn('task-dep-project-e');

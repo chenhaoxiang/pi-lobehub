@@ -75,6 +75,22 @@ describe('TaskModel.hasSubtaskOutsideProject', () => {
     expect(await owner.hasSubtaskOutsideProject(parent.id, target)).toBe(true);
   });
 
+  it('serializes a project move and child creation on the parent row', async () => {
+    const model = new TaskModel(serverDB, ownerId, workspaceId);
+    const source = await projectIn('task-tree-project-race-a');
+    const target = await projectIn('task-tree-project-race-b');
+    const parent = await model.create({ instruction: 'parent', projectId: source });
+
+    await serverDB.transaction(async (tx) => {
+      const txModel = new TaskModel(tx as LobeChatDatabase, ownerId, workspaceId);
+      await txModel.assertProjectPatchSafe(parent.id, { projectId: target });
+      await txModel.update(parent.id, { projectId: target });
+    });
+
+    const child = await model.create({ instruction: 'child', parentTaskId: parent.id });
+    expect(child.projectId).toBe(target);
+  });
+
   it('ignores a trashed subtask and subtasks of another scope', async () => {
     const model = new TaskModel(serverDB, ownerId, workspaceId);
     const target = await projectIn('task-tree-project-e');

@@ -52,6 +52,7 @@ type ProjectOption =
   { key: string; kind: 'none' } | { key: string; kind: 'project'; project: ProjectListItem };
 
 interface ProjectSelectorProps {
+  ariaDescribedBy?: string;
   children: ReactNode;
   /** Makes the picker read-only for a reason other than permission. */
   disabledReason?: string;
@@ -69,7 +70,7 @@ interface ProjectSelectorProps {
  * Projects lab is off, so no host can offer a feature the user has not enabled.
  */
 const ProjectSelector = memo<ProjectSelectorProps>(
-  ({ children, disabledReason, fullWidth, onChange, taskIdentifier, value }) => {
+  ({ ariaDescribedBy, children, disabledReason, fullWidth, onChange, taskIdentifier, value }) => {
     const { t } = useTranslation('chat');
     const enabled = useUserStore(labPreferSelectors.enableProjects);
     const { allowed: canEdit, reason } = usePermission('create_content');
@@ -247,6 +248,7 @@ const ProjectSelector = memo<ProjectSelectorProps>(
           <Tooltip title={blockedReason}>
             <div
               aria-disabled
+              aria-describedby={ariaDescribedBy}
               role={'button'}
               style={{ ...wrapperStyle, cursor: 'not-allowed', opacity: 0.5 }}
               onClick={(event) => event.stopPropagation()}
@@ -256,6 +258,7 @@ const ProjectSelector = memo<ProjectSelectorProps>(
           </Tooltip>
         ) : (
           <div
+            aria-describedby={ariaDescribedBy}
             aria-expanded={open}
             aria-haspopup={'dialog'}
             role={'button'}

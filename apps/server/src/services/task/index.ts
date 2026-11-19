@@ -717,6 +717,23 @@ export class TaskService {
     return this.withAssigneeUserLock(data.assigneeUserId, (db) =>
       writeKeepingArchivedIdle(db, async (tx) => {
         const model = new TaskModel(tx, this.userId, this.workspaceId);
+        try {
+          if (data.parentTaskId !== undefined || data.projectId !== undefined) {
+            await model.assertProjectPatchSafe(taskId, {
+              parentTaskId: data.parentTaskId,
+              projectId: data.projectId,
+            });
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          const message =
+            error instanceof Error ? error.message : 'Task project relation is invalid';
+          throw new TRPCError({
+            cause: error,
+            code: message === 'Project not found' ? 'NOT_FOUND' : 'BAD_REQUEST',
+            message,
+          });
+        }
         // A schedule write that carries schedule columns but no status must arm
         // the run-count window in the SAME write that makes the schedule
         // dispatchable (vent T-634). The stamp is decided against the row as it

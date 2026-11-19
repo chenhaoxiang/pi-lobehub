@@ -621,6 +621,7 @@ export class TaskDetailSliceActionImpl {
     // The assignee chip flips on this dispatch; the feed row it explains must
     // land in the same beat, not after the mutation *and* the detail refetch.
     const current = this.#get().taskDetailMap[id];
+    const previousProjectId = current?.projectId;
     const userState = useUserStore.getState();
     const actorId = options?.actorAgentId ? undefined : userProfileSelectors.userId(userState);
     const optimisticActivities = current
@@ -721,6 +722,13 @@ export class TaskDetailSliceActionImpl {
       // optimistic dispatch above is reconciled from the source of record.
       onError: async (error) => {
         collections.rollback();
+        if (data.projectId !== undefined) {
+          this.internal_dispatchTaskDetail({
+            id,
+            type: 'updateTaskDetail',
+            value: { projectId: previousProjectId },
+          });
+        }
         await refreshPatchedTargets();
         /**
          * The rollback refetch has already replaced the editor's failed local
@@ -759,10 +767,7 @@ export class TaskDetailSliceActionImpl {
       assigneeAgentId !== undefined ||
       assigneeUserId !== undefined ||
       data.parentTaskId !== undefined ||
-      data.priority !== undefined ||
-      // The optimistic patch drops the row from its old project's lists; only a
-      // refetch can add it to the lists of the project it moved into.
-      data.projectId !== undefined
+      data.priority !== undefined
     ) {
       await Promise.all([
         this.#get().refreshTaskList(),

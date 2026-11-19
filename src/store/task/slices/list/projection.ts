@@ -49,7 +49,7 @@ export interface TaskListQuery {
 
 export interface TaskListValue {
   items: TaskListItem[];
-  /** The query's project scope, so a task moved elsewhere can drop out of this list. */
+  /** The query's project scope, so a task moved elsewhere can drop from this list. */
   projectId?: string;
   /** The query's status filter, so a status change can drop a row it no longer matches. */
   statuses?: TaskStatus[];
@@ -78,8 +78,6 @@ export interface TaskGroupListValue {
   excludeStatuses?: TaskStatus[];
   groupBy: TaskKanbanGroupBy;
   groups: TaskGroupItem[];
-  /** The query's project scope, so a task moved elsewhere can drop off this board. */
-  projectId?: string;
 }
 
 export const taskListQueryKey = (query: TaskListQuery) => stableQueryKey(query);
@@ -119,8 +117,8 @@ export const taskGroupKeyByStatus: Record<TaskStatus, string> = {
   scheduled: 'running',
 };
 
-/** Whether a patched row left the project a collection is scoped to. */
-const leftProjectScope = (scope: string | undefined, task: CollectionTask) =>
+/** A patched task leaves a project-scoped list when its id no longer matches. */
+const leftProjectScope = (scope: string | undefined, task: TaskListItem) =>
   !!scope && task.projectId !== undefined && task.projectId !== scope;
 
 /** Tasks are addressed by stable database id across the task store. */
@@ -162,7 +160,6 @@ export const taskGroupListEntity: ReplicaEntityAdapter<TaskGroupListValue, TaskG
     // A card whose new status the board hides ("Completed tasks: None") leaves it, even
     // though the server still returns the hidden status's empty column.
     if (next && data.excludeStatuses?.includes(next.status as TaskStatus)) next = undefined;
-    if (next && leftProjectScope(data.projectId, next)) next = undefined;
 
     const status = next?.status as TaskStatus | undefined;
     const moves = data.groupBy === 'status' && next !== undefined && status !== current.status;
