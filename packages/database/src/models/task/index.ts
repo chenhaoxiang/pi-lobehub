@@ -306,6 +306,10 @@ export class TaskModel {
     return tree.findAllDescendants(this.ctx, rootTaskId);
   }
 
+  async hasSubtaskOutsideProject(taskId: string, projectId: string | null): Promise<boolean> {
+    return tree.hasSubtaskOutsideProject(this.ctx, taskId, projectId);
+  }
+
   async getTaskTree(rootTaskId: string): Promise<TaskItem[]> {
     return tree.getTaskTree(this.ctx, rootTaskId);
   }
@@ -559,6 +563,10 @@ export class TaskModel {
 
   async removeDependency(taskId: string, dependsOnId: string): Promise<void> {
     return dependencies.removeDependency(this.ctx, taskId, dependsOnId);
+  }
+
+  async hasDependencyOutsideProject(taskId: string, projectId: string | null): Promise<boolean> {
+    return dependencies.hasDependencyOutsideProject(this.ctx, taskId, projectId);
   }
 
   async getDependencies(taskId: string) {
