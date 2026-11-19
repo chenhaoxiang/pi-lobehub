@@ -7,6 +7,7 @@ import type * as WorkRegistrationModule from '@/server/services/workRegistration
 
 import { hookDispatcher } from '../hooks';
 import { CompletionLifecycle } from '.';
+import { statusForReason } from './persistence';
 import { flushMicrotasks, mockNotifyAgentRunCompleted } from './testUtils';
 
 vi.mock('@/database/models/work', () => import('./testUtils').then((m) => m.workModelModule()));
@@ -30,8 +31,51 @@ vi.mock('@/server/services/workRegistration', async (importOriginal) => ({
 const buildLifecycle = () => new CompletionLifecycle({} as any, 'user-1');
 
 describe('CompletionLifecycle.dispatchHooks — verify plan race', () => {
+  it('persists unresolved tool stops with error status', () => {
+    expect(statusForReason('tool_name_unresolved')).toBe('error');
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('routes unresolved tool stops through the failure lifecycle without verification', async () => {
+    const lifecycle = buildLifecycle();
+    const persist = vi.spyOn(lifecycle as any, 'persistCompletion').mockResolvedValue(true);
+    const dispatch = vi.spyOn(hookDispatcher, 'dispatch').mockResolvedValue(undefined as any);
+    vi.spyOn(hookDispatcher, 'unregister').mockImplementation(function () {});
+
+    await lifecycle.dispatchHooks(
+      'op-unresolved',
+      {
+        error: {
+          message: 'The model repeatedly requested tools that do not exist.',
+          type: 'tool_name_unresolved',
+        },
+        host: { hooks: [] },
+        status: 'error',
+      },
+      'tool_name_unresolved',
+    );
+
+    expect(persist).toHaveBeenCalledWith(
+      'op-unresolved',
+      expect.objectContaining({ status: 'error' }),
+      'tool_name_unresolved',
+      undefined,
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      'op-unresolved',
+      'onError',
+      expect.objectContaining({ reason: 'tool_name_unresolved', status: 'error' }),
+      [],
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      'op-unresolved',
+      'onComplete',
+      expect.objectContaining({ reason: 'tool_name_unresolved', status: 'error' }),
+      [],
+    );
   });
 
   it('awaits the start-time verify-plan instantiation before running the completion gate', async () => {

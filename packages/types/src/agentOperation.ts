@@ -57,6 +57,7 @@ export type AgentOperationCompletionReason =
    * tool calls than the burst limit; a guard cut the run short.
    */
   | 'tool_call_repeat_limit'
+  | 'tool_name_unresolved'
   | 'waiting_for_async_tool'
   | 'waiting_for_client'
   | 'waiting_for_human';

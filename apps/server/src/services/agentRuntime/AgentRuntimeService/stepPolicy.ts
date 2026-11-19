@@ -6,6 +6,10 @@ import { type StepCompletionReason } from '../types';
  * Decide whether to continue execution
  */
 export function shouldContinueExecution(state: any, context?: any): boolean {
+  // A graceful unresolved-tool stop is terminal even if an older worker has
+  // not yet projected its durable error status.
+  if (state.status === 'error' || state.error?.type === 'tool_name_unresolved') return false;
+
   // Completed
   if (state.status === 'done') return false;
 
@@ -17,9 +21,6 @@ export function shouldContinueExecution(state: any, context?: any): boolean {
 
   // Parked waiting for a client to run the next LLM call
   if (state.status === 'waiting_for_client') return false;
-
-  // Error occurred
-  if (state.status === 'error') return false;
 
   // Interrupted
   if (state.status === 'interrupted') return false;
@@ -78,7 +79,8 @@ export function calculatePriority(stepResult: any): 'high' | 'normal' | 'low' {
  * Determine operation completion reason
  */
 export function determineCompletionReason(state: AgentState): StepCompletionReason {
-  if (state.status === 'error') return 'error';
+  if (state.status === 'error' && state.error?.type !== 'tool_name_unresolved') return 'error';
+  if (state.error?.type === 'tool_name_unresolved') return 'tool_name_unresolved';
   if (state.status === 'interrupted') return 'interrupted';
   if (state.status === 'waiting_for_human') return 'waiting_for_human';
   if (state.status === 'waiting_for_async_tool') return 'waiting_for_async_tool';

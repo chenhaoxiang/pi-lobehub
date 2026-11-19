@@ -579,6 +579,28 @@ describe('TaskLifecycleService.onTopicComplete', () => {
       expect(updateStatus).toHaveBeenCalledWith('task-1', 'paused', { error: 'boom' });
     });
 
+    it('unresolved-tool failure never completes, verifies, or bridges before failure is recorded', async () => {
+      const task = baseTask({ automationMode: null });
+      findById.mockResolvedValue(task);
+      const bridge = vi.spyOn(service as any, 'bridgeResultToCreator').mockResolvedValue(undefined);
+
+      await service.onTopicComplete({
+        errorMessage: 'The model repeatedly requested tools that do not exist.',
+        operationId: 'op-1',
+        reason: 'tool_name_unresolved',
+        taskId: 'task-1',
+        taskIdentifier: 'TASK-1',
+        topicId: 'topic-1',
+      });
+
+      expect(updateStatus).toHaveBeenCalledWith('task-1', 'paused', {
+        error: 'The model repeatedly requested tools that do not exist.',
+      });
+      expect(updateStatus).not.toHaveBeenCalledWith('task-1', 'completed', expect.anything());
+      expect(verifyFindByOperation).not.toHaveBeenCalled();
+      expect(bridge).not.toHaveBeenCalled();
+    });
+
     it('manual run of a schedule task fails → restored to scheduled, NOT paused', async () => {
       const task = baseTask({ automationMode: 'schedule', status: 'running' });
       findById.mockResolvedValue(task);

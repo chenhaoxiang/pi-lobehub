@@ -152,6 +152,15 @@ describe('AgentRuntimeService', () => {
       ).toBe('tool_call_repeat_limit');
     });
 
+    it('should project an unresolved-tool stop as a failure completion reason', () => {
+      expect(
+        reasonFor({
+          error: { type: 'tool_name_unresolved' },
+          status: 'error',
+        }),
+      ).toBe('tool_name_unresolved');
+    });
+
     it('should let a real failure outrank the repeat-guard marker', () => {
       expect(
         reasonFor({
