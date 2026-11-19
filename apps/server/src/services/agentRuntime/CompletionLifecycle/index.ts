@@ -64,10 +64,7 @@ const log = debug('lobe-server:completion-lifecycle');
  */
 /** Terminal reasons after which the topic's agent may be woken again. */
 const isTopicRunSettledReason = (reason: string) =>
-  reason !== 'interrupted' &&
-  reason !== 'tool_name_unresolved' &&
-  reason !== 'waiting_for_human' &&
-  reason !== 'waiting_for_async_tool';
+  reason !== 'interrupted' && reason !== 'waiting_for_human' && reason !== 'waiting_for_async_tool';
 
 export const isSuccessLikeCompletionReason = (reason: string): boolean =>
   reason === 'done' ||
