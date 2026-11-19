@@ -767,7 +767,10 @@ export class TaskDetailSliceActionImpl {
       assigneeAgentId !== undefined ||
       assigneeUserId !== undefined ||
       data.parentTaskId !== undefined ||
-      data.priority !== undefined
+      data.priority !== undefined ||
+      // Project-scoped lists and boards must refetch both the old and target
+      // project queries after a move or clear.
+      data.projectId !== undefined
     ) {
       await Promise.all([
         this.#get().refreshTaskList(),

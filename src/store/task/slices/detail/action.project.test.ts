@@ -28,6 +28,8 @@ beforeEach(() => {
 describe('updateTask projectId', () => {
   it('projects a selected project and clear optimistically into detail state', async () => {
     vi.mocked(taskService.update).mockResolvedValue({ success: true } as any);
+    const refreshTaskList = vi.fn().mockResolvedValue(undefined);
+    useTaskStore.setState({ refreshTaskList } as any);
 
     await useTaskStore.getState().updateTask('T-1', { projectId: 'p2' });
     expect(useTaskStore.getState().taskDetailMap['T-1'].projectId).toBe('p2');
@@ -35,6 +37,9 @@ describe('updateTask projectId', () => {
     await useTaskStore.getState().updateTask('T-1', { projectId: null });
     expect(useTaskStore.getState().taskDetailMap['T-1'].projectId).toBeNull();
     expect(taskService.update).toHaveBeenNthCalledWith(2, 'T-1', { projectId: null });
+    // `refreshTaskList` revalidates every loaded list and project-scoped board;
+    // it is the existing boundary that refills the target board and removes the old row.
+    expect(refreshTaskList).toHaveBeenCalledTimes(2);
   });
 
   it('rolls the project projection back after a refused save', async () => {
