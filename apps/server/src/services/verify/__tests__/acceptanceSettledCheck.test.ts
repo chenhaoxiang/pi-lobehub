@@ -68,7 +68,20 @@ const acceptedResult = (checkItemId: string, verifyRunId: string) => ({
 
 const planned = (...ids: string[]) => ids.map((id, index) => ({ id, index, title: id }));
 
-const service = () => new AcceptanceService({} as any, 'u1');
+const db = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => {
+          const row = await mocks.acceptanceFindById('acc-1');
+          return row ? [row] : [];
+        },
+      }),
+    }),
+  }),
+  transaction: async (run: (tx: unknown) => unknown) => run(db),
+};
+const service = () => new AcceptanceService(db as any, 'u1');
 
 beforeEach(() => {
   vi.clearAllMocks();

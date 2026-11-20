@@ -168,9 +168,21 @@ export const sendReviewRoundBack = async (
     : undefined;
   if (!acceptance)
     throw new TRPCError({ code: 'NOT_FOUND', message: 'Delivery acceptance not found' });
-  await new AcceptanceService(db, acceptance.userId, acceptance.workspaceId ?? undefined, {
-    actorUserId: actor.userId,
-  }).reject(acceptance.id, input.note);
+  try {
+    await new AcceptanceService(db, acceptance.userId, acceptance.workspaceId ?? undefined, {
+      actorUserId: actor.userId,
+    }).reject(acceptance.id, input.note);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /already been accepted|acceptance is closed|delivery was rejected|still in progress/.test(
+        error.message,
+      )
+    ) {
+      throw new TRPCError({ code: 'CONFLICT', message: error.message });
+    }
+    throw error;
+  }
 
   await new TaskModel(db, acceptance.userId, acceptance.workspaceId ?? undefined).updateTaskConfig(
     review.taskId,

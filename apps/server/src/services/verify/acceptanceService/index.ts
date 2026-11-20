@@ -206,20 +206,28 @@ export class AcceptanceService {
    * Chain a run onto an acceptance as its next round, then re-derive the
    * aggregate status (a new round re-opens a rejected loop).
    */
-  attachRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> => {
-    const acceptance = await this.acceptanceModel.findById(acceptanceId);
-    if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
-
-    return this.attachResolvedRun(runId, acceptance);
-  };
+  attachRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      });
+      return service.attachResolvedRun(runId, locked);
+    });
 
   /** Attach a Task run using policy scope while preserving report visibility. */
-  attachPolicyRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> => {
-    const acceptance = await this.acceptanceModel.findPolicyById(acceptanceId);
-    if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
-
-    return this.attachResolvedRun(runId, acceptance);
-  };
+  attachPolicyRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      });
+      const acceptance = await service.acceptanceModel.findPolicyById(acceptanceId);
+      if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      return service.attachResolvedRun(runId, acceptance);
+    });
 
   /**
    * File an ungrouped acceptance under the project its subject implies when a
@@ -285,7 +293,7 @@ export class AcceptanceService {
         : undefined;
     if (draft) {
       const folded = await this.runModel.foldIntoRound(runId, draft.id);
-      await this.recomputeStatus(acceptanceId);
+      await this.recomputeStatusLocked(acceptanceId, acceptance);
       log(
         'run %s folded into draft round %d of acceptance %s',
         runId,
@@ -299,7 +307,7 @@ export class AcceptanceService {
     // round never leaks through its own report URL.
     const run = await this.runModel.attachToAcceptance(runId, acceptanceId, acceptance.visibility);
     notifyAcceptance(acceptanceId, 'session');
-    await this.recomputeStatus(acceptanceId);
+    await this.recomputeStatusLocked(acceptanceId, acceptance);
     log('run %s attached to acceptance %s as round %d', runId, acceptanceId, run.roundIndex);
 
     // A new round landing is the first server-side proof that the reviewer is done with the
@@ -363,8 +371,20 @@ export class AcceptanceService {
    * user's `accepted` / `closed` are terminal; `rejected` is sticky until a
    * round newer than the decision arrives.
    */
-  recomputeStatus = async (acceptanceId: string): Promise<AcceptanceStatus | null> => {
-    const acceptance = await this.acceptanceModel.findPolicyById(acceptanceId);
+  recomputeStatus = async (acceptanceId: string): Promise<AcceptanceStatus | null> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) return null;
+      return new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      }).recomputeStatusLocked(acceptanceId, locked);
+    });
+
+  private recomputeStatusLocked = async (
+    acceptanceId: string,
+    locked?: AcceptanceItem,
+  ): Promise<AcceptanceStatus | null> => {
+    const acceptance = locked ?? (await this.acceptanceModel.findPolicyById(acceptanceId));
     if (!acceptance) return null;
     if (acceptance.status === 'accepted' || acceptance.status === 'closed') {
       return acceptance.status;
@@ -713,6 +733,7 @@ export class AcceptanceService {
         checks.length > 0 &&
         checks.every(
           (check) =>
+            check.waived ||
             check.result?.userDecision === 'accepted' ||
             check.result?.userDecision === 'overridden',
         );

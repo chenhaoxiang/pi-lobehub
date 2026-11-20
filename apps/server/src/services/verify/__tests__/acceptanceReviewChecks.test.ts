@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   adjudicate: vi.fn(),
   findById: vi.fn(),
   listByAcceptance: vi.fn(),
+  listByRuns: vi.fn(),
+  listEvidenceByRuns: vi.fn(),
+  findReportsByRuns: vi.fn(),
   resultUpdate: vi.fn(),
   resultModelScopes: [] as unknown[],
   setDecision: vi.fn(),
@@ -30,10 +33,20 @@ vi.mock('@/database/models/verifyRun', () => ({
     return { listByAcceptance: mocks.listByAcceptance, setDecision: mocks.setDecision };
   }),
 }));
+vi.mock('@/database/models/verifyEvidence', () => ({
+  VerifyEvidenceModel: vi.fn(function () {
+    return { listByRuns: mocks.listEvidenceByRuns };
+  }),
+}));
+vi.mock('@/database/models/verifyReport', () => ({
+  VerifyReportModel: vi.fn(function () {
+    return { findByRuns: mocks.findReportsByRuns };
+  }),
+}));
 vi.mock('@/database/models/verifyCheckResult', () => ({
   VerifyCheckResultModel: vi.fn(function (db: unknown) {
     mocks.resultModelScopes.push(db);
-    return { update: mocks.resultUpdate };
+    return { listByRuns: mocks.listByRuns, update: mocks.resultUpdate };
   }),
 }));
 vi.mock('@/database/models/verifyReviewPrediction', () => ({
@@ -64,6 +77,7 @@ const tx = {
       }),
     }),
   }),
+  transaction: async (run: (nested: unknown) => unknown) => run(tx),
   tx: true,
 };
 const db = { transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)) };
@@ -99,6 +113,9 @@ describe('AcceptanceService.reviewChecks', () => {
     mocks.resultModelScopes.length = 0;
     mocks.findById.mockResolvedValue({ id: 'acc-1', status: 'delivered' });
     mocks.listByAcceptance.mockResolvedValue([{ id: 'run-2', roundIndex: 2 }]);
+    mocks.listByRuns.mockResolvedValue([]);
+    mocks.listEvidenceByRuns.mockResolvedValue([]);
+    mocks.findReportsByRuns.mockResolvedValue([]);
   });
 
   it.each([
@@ -141,6 +158,28 @@ describe('AcceptanceService.reviewChecks', () => {
       service().reviewChecks('acc-1', { action: 'accept', checkItemIds: ids }),
     ).rejects.toThrow(error);
     expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts a waived-only union as an all-passed aggregate', async () => {
+    const waived = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: 'rejected',
+    };
+    mocks.listByAcceptance.mockResolvedValue([
+      { id: 'run-1', plan: [{ id: 'check-a', required: true, title: 'A' }], roundIndex: 1 },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waived]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+      }),
+    ).resolves.toMatchObject({ accepted: true });
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'accepted');
   });
 
   it('accepts a delivered aggregate while holding the acceptance row lock', async () => {
