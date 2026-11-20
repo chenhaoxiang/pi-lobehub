@@ -78,8 +78,22 @@ vi.mock('@/server/workflows/expertiseRejection', () => ({
   ExpertiseRejectionWorkflow: { trigger: mocks.distilRejections },
 }));
 
-// A goal-guarded reject runs in a transaction; the mocked models ignore the handle.
-const db = { transaction: (run: (tx: unknown) => unknown) => run(db) };
+// Decision paths lock the acceptance row before changing its lifecycle. The mocked
+// models ignore the handle, but the fixture still exposes the same select/for-update
+// shape as the production transaction.
+const db = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => {
+          const row = await mocks.findById('acc-1');
+          return row ? [row] : [];
+        },
+      }),
+    }),
+  }),
+  transaction: (run: (tx: unknown) => unknown) => run(db),
+};
 const service = () => new AcceptanceService(db as any, 'user-1');
 
 const taskAcceptance = (status: string) => ({

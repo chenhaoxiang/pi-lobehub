@@ -78,7 +78,20 @@ vi.mock('@/server/workflows/expertiseRejection', () => ({
   ExpertiseRejectionWorkflow: { trigger: mocks.distilRejections },
 }));
 
-const service = () => new AcceptanceService({} as any, 'user-1');
+const db = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => {
+          const row = await mocks.findById('acc-1');
+          return row ? [row] : [];
+        },
+      }),
+    }),
+  }),
+  transaction: async (run: (tx: unknown) => unknown) => run(db),
+};
+const service = () => new AcceptanceService(db as any, 'user-1');
 
 const acceptance = (status: string) => ({
   id: 'acc-1',
