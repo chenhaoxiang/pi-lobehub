@@ -20,7 +20,7 @@ import { VerifyRunModel } from '@/database/models/verifyRun';
 import type { LobeChatDatabase } from '@/database/type';
 import {
   buildRoundMarksPrompt,
-  reviewIdOfTask,
+  reviewContextOfTask,
 } from '@/server/services/acceptanceReview/roundContext';
 import { extractFileIdsFromEditorData } from '@/server/services/file/extractFileIdsFromEditorData';
 import { resolveAttachmentMetadata } from '@/server/services/file/resolveAttachments';
@@ -446,9 +446,13 @@ export async function buildTaskPrompt(
 
   const goalLoop = await resolveGoalLoopContext(task, deps);
 
-  const reviewId = reviewIdOfTask(task.config);
-  const reviewMarks = reviewId
-    ? await buildRoundMarksPrompt(db, reviewId, { userId, workspaceId }).catch(() => undefined)
+  const reviewContext = reviewContextOfTask(task.config);
+  const reviewMarks = reviewContext
+    ? await buildRoundMarksPrompt(db, reviewContext.reviewId, {
+        markIds: reviewContext.markIds,
+        userId,
+        workspaceId,
+      }).catch(() => undefined)
     : undefined;
 
   const prompt = buildTaskRunPrompt({

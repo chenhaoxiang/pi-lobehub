@@ -14,13 +14,13 @@ import pMap from 'p-map';
 import { AcceptanceReviewModel } from '@/database/models/acceptanceReview';
 import { ProjectModel } from '@/database/models/project';
 import { ProjectSiteModel } from '@/database/models/projectReview';
-import { acceptanceRouter } from '@/server/routers/lambda/acceptance';
 import { projectReview } from '@/server/services/acceptanceReview/projection';
 import {
   sendReviewRoundBack,
   submitReviewRound,
 } from '@/server/services/acceptanceReview/submitReview';
 import { FileService } from '@/server/services/file';
+import { AcceptanceService } from '@/server/services/verify';
 
 import type { ReviewEnv } from './auth';
 import { uploadScreenshot } from './data';
@@ -313,9 +313,6 @@ export const listAgents = async (c: ReviewContext) => {
   });
 };
 
-const acceptanceCaller = (c: ReviewContext) =>
-  acceptanceRouter.createCaller({ userId: c.get('userId') } as never);
-
 export const setMarkVerdict = async (c: ReviewContext) => {
   const body = await parseBody(c, acceptanceReviewMarkVerdictSchema);
   if (body.error) return body.error;
@@ -331,17 +328,27 @@ export const setMarkVerdict = async (c: ReviewContext) => {
   if (!deliveryId || projection.deliveryStatus !== 'delivered')
     return reviewError(c, 409, 'INVALID_STATE', 'The delivery is not waiting for review');
 
-  await acceptanceCaller(c).reviewChecks({
+  const delivery = await db.query.acceptances.findFirst({
+    where: (rows, { eq }) => eq(rows.id, deliveryId),
+  });
+  if (!delivery) return notFound(c);
+  const acceptanceService = new AcceptanceService(
+    db,
+    delivery.userId,
+    delivery.workspaceId ?? undefined,
+    { actorUserId: c.get('userId') },
+  );
+  await acceptanceService.reviewChecks(deliveryId, {
     action: body.data.verdict === 'pass' ? 'accept' : 'reject',
     checkItemIds: [check.checkId],
     comment: body.data.verdict === 'pass' ? body.data.reason : body.data.reason || 'Not fixed',
-    id: deliveryId,
+    expectedStatus: 'delivered',
   });
 
   if (body.data.verdict === 'pass') {
     const after = await projectReview(db, found.row, marks);
     const allPassed = marks.every((mark) => after.results.get(mark.id)?.human === 'pass');
-    if (allPassed) await acceptanceCaller(c).accept({ id: deliveryId });
+    if (allPassed) await acceptanceService.accept(deliveryId);
   }
   return c.json(await describeReview(c, found.scope, found.row, { withMarks: true }));
 };
@@ -349,6 +356,9 @@ export const setMarkVerdict = async (c: ReviewContext) => {
 export const sendReviewBack = async (c: ReviewContext) => {
   const body = await parseBody(c, acceptanceReviewDecisionSchema.pick({ note: true }));
   if (body.error) return body.error;
+  const { acceptance, can } = c.get('access');
+  const allowed = acceptance.subjectType === 'site' ? can.moderate : can.reject;
+  if (!allowed) return reviewError(c, 403, 'FORBIDDEN', 'Not allowed to request changes');
   const found = await submittedReview(c);
   if (!found || found.row.status !== 'submitted') return notFound(c);
   await sendReviewRoundBack(

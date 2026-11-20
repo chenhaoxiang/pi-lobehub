@@ -5,7 +5,7 @@ import type {
   AcceptanceReviewMarkVerdict,
   AcceptanceReviewPhase,
 } from '@lobechat/types';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 
 import { acceptances, tasks, verifyEvidence } from '@/database/schemas';
 import type { LobeChatDatabase } from '@/database/type';
@@ -65,14 +65,35 @@ export const projectReview = async (
   if (review.status === 'draft') return emptyProjection('draft');
   const [task] = review.taskId
     ? await db
-        .select({ id: tasks.id, identifier: tasks.identifier, name: tasks.name })
+        .select({
+          createdByUserId: tasks.createdByUserId,
+          id: tasks.id,
+          identifier: tasks.identifier,
+          name: tasks.name,
+          workspaceId: tasks.workspaceId,
+        })
         .from(tasks)
-        .where(eq(tasks.id, review.taskId))
+        .where(
+          and(
+            eq(tasks.id, review.taskId),
+            review.userId ? eq(tasks.createdByUserId, review.userId) : undefined,
+            review.workspaceId
+              ? eq(tasks.workspaceId, review.workspaceId)
+              : isNull(tasks.workspaceId),
+          ),
+        )
         .limit(1)
     : [];
   const delivery = task
     ? await db.query.acceptances.findFirst({
-        where: and(eq(acceptances.subjectType, 'task'), eq(acceptances.subjectId, task.id)),
+        where: and(
+          eq(acceptances.subjectType, 'task'),
+          eq(acceptances.subjectId, task.id),
+          eq(acceptances.userId, task.createdByUserId),
+          task.workspaceId
+            ? eq(acceptances.workspaceId, task.workspaceId)
+            : isNull(acceptances.workspaceId),
+        ),
       })
     : undefined;
   if (!delivery) return { ...emptyProjection('running'), task: task ?? null };

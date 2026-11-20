@@ -55,7 +55,17 @@ vi.mock('@/server/workflows/expertiseRejection', () => ({
   ExpertiseRejectionWorkflow: { trigger: mocks.trigger },
 }));
 
-const tx = { tx: true };
+let lockedStatus = 'delivered';
+const tx = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => [{ status: lockedStatus }],
+      }),
+    }),
+  }),
+  tx: true,
+};
 const db = { transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)) };
 
 const result = (id: string, checkItemId: string, verdict = 'failed') => ({
@@ -85,6 +95,7 @@ const service = () => {
 describe('AcceptanceService.reviewChecks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lockedStatus = 'delivered';
     mocks.resultModelScopes.length = 0;
     mocks.findById.mockResolvedValue({ id: 'acc-1', status: 'delivered' });
   });
@@ -129,6 +140,19 @@ describe('AcceptanceService.reviewChecks', () => {
       service().reviewChecks('acc-1', { action: 'accept', checkItemIds: ids }),
     ).rejects.toThrow(error);
     expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('rechecks a delivered lifecycle fence while holding the acceptance row lock', async () => {
+    lockedStatus = 'accepted';
+
+    await expect(
+      service().reviewChecks('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+        expectedStatus: 'delivered',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(mocks.resultUpdate).not.toHaveBeenCalled();
   });
 
   it('fails the whole decision when its proposal cannot be answered', async () => {

@@ -12,11 +12,23 @@ const SCREENSHOT_RESOLVE_CONCURRENCY = 5;
 
 type RoundMark = Pick<AcceptanceReviewMark, 'content' | 'routeKey'>;
 
-export const reviewIdOfTask = (config: unknown): string | undefined => {
-  const reviewId = (config as { acceptanceReview?: { reviewId?: unknown } } | null)
-    ?.acceptanceReview?.reviewId;
-  return typeof reviewId === 'string' ? reviewId : undefined;
+export interface ReviewTaskContext {
+  markIds?: string[];
+  reviewId: string;
+}
+
+export const reviewContextOfTask = (config: unknown): ReviewTaskContext | undefined => {
+  const review = (config as { acceptanceReview?: { markIds?: unknown; reviewId?: unknown } } | null)
+    ?.acceptanceReview;
+  if (typeof review?.reviewId !== 'string') return undefined;
+  const markIds = Array.isArray(review.markIds)
+    ? review.markIds.filter((id): id is string => typeof id === 'string')
+    : undefined;
+  return { markIds, reviewId: review.reviewId };
 };
+
+export const reviewIdOfTask = (config: unknown): string | undefined =>
+  reviewContextOfTask(config)?.reviewId;
 
 export const loadReviewerName = async (db: LobeChatDatabase, userId: string | null) => {
   if (!userId) return 'A reviewer';
@@ -78,9 +90,11 @@ export const buildRoundInstruction = (
 export const buildRoundMarksPrompt = async (
   db: LobeChatDatabase,
   reviewId: string,
-  viewer: { userId: string; workspaceId?: string },
+  viewer: { markIds?: string[]; userId: string; workspaceId?: string },
 ) => {
-  const marks = await new AcceptanceReviewModel(db).listMarks(reviewId);
+  const allMarks = await new AcceptanceReviewModel(db).listMarks(reviewId);
+  const selected = viewer.markIds ? new Set(viewer.markIds) : undefined;
+  const marks = selected ? allMarks.filter((mark) => selected.has(mark.id)) : allMarks;
   if (!marks.length) return undefined;
   const resolve = createEvidenceFileResolver(db, viewer.userId, viewer.workspaceId);
   const payload = await pMap(

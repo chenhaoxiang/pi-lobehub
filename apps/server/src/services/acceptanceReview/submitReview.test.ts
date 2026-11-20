@@ -333,6 +333,8 @@ describe('submitReviewRound', () => {
     );
     const handoff = JSON.stringify(execAgent.mock.calls.at(-1)?.[0]);
     expect(handoff).toContain('Still looks disabled on hover');
+    expect(handoff).toContain(rejected.id);
+    expect(handoff).not.toContain(accepted.id);
     const rework = handoff.slice(handoff.indexOf('Marks to rework'));
     const reworkList = rework.slice(0, rework.indexOf(']'));
     expect(reworkList).toContain(rejected.id);

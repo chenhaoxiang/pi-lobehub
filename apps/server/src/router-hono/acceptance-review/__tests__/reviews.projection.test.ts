@@ -152,6 +152,7 @@ beforeEach(async () => {
     instruction: 'review round',
     seq: 1,
     status: 'completed',
+    workspaceId: workspace.id,
   });
   await model.linkTask(reviewId, taskId);
   const [delivery] = await serverDB
@@ -239,6 +240,21 @@ afterEach(async () => {
 });
 
 describe('a submitted review with a delivery', () => {
+  it('uses the review workspace acceptance when personal and workspace rows coexist', async () => {
+    await serverDB.insert(acceptances).values({
+      projectId: null,
+      status: 'accepted',
+      subjectId: taskId,
+      subjectType: 'task',
+      userId: memberId,
+      visibility: 'public',
+    });
+
+    const body = await (await siteCall(memberId, `/reviews/${reviewId}`)).json();
+    expect(body.phase).toBe('delivered');
+    expect(body.reportUrl).toContain(`/acceptance/${deliveryId}`);
+  });
+
   it('shows what the Agent concluded for each mark, with evidence and the report link', async () => {
     const body = await (await siteCall(memberId, `/reviews/${reviewId}`)).json();
 
@@ -257,6 +273,26 @@ describe('a submitted review with a delivery', () => {
       missing: false,
     });
     expect(body.marks[1].result).toMatchObject({ agent: { verdict: 'fail' }, human: null });
+  });
+
+  it('rejects a stale verdict after the delivery was accepted without writing a result', async () => {
+    await serverDB
+      .update(acceptances)
+      .set({ status: 'accepted' })
+      .where(eq(acceptances.id, deliveryId));
+
+    const response = await siteCall(memberId, `/reviews/${reviewId}/marks/${marks[1].id}/verdict`, {
+      json: { reason: 'Late decision', verdict: 'not_fixed' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'INVALID_STATE' } });
+    const [result] = await serverDB
+      .select()
+      .from(verifyCheckResults)
+      .where(eq(verifyCheckResults.checkItemId, marks[1].id));
+    expect(result.userDecision).toBeNull();
   });
 
   it('records a not-fixed verdict on the check without closing the delivery', async () => {
@@ -344,14 +380,24 @@ describe('a submitted review with a delivery', () => {
     expect(discussion.items).toEqual([]);
   });
 
-  it('refuses to send back a round the Agent is still working on', async () => {
+  it('forbids a site member from dispatching a send-back', async () => {
+    const response = await siteCall(memberId, `/reviews/${reviewId}/send-back`, {
+      json: { note: 'Button still grey' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'FORBIDDEN' } });
+  });
+
+  it('refuses an authorized send-back while the Agent is still working on the round', async () => {
     await serverDB.update(tasks).set({ status: 'running' }).where(eq(tasks.id, taskId));
     await serverDB
       .update(acceptances)
       .set({ status: 'verifying' })
       .where(eq(acceptances.id, deliveryId));
 
-    const response = await siteCall(memberId, `/reviews/${reviewId}/send-back`, {
+    const response = await siteCall(ownerId, `/reviews/${reviewId}/send-back`, {
       json: { note: 'Button still grey' },
       method: 'POST',
     });

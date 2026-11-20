@@ -5,11 +5,14 @@ import type {
   ReviewProposalOutcome,
   VerifyCheckDecisionDetail,
 } from '@lobechat/types';
+import { TRPCError } from '@trpc/server';
 import debug from 'debug';
+import { eq } from 'drizzle-orm';
 import pMap from 'p-map';
 
 import { VerifyCheckResultModel } from '@/database/models/verifyCheckResult';
 import { VerifyReviewPredictionModel } from '@/database/models/verifyReviewPrediction';
+import { acceptances } from '@/database/schemas';
 import type { VerifyCheckResultItem } from '@/database/schemas/verify';
 
 import { computeFalseFlags } from '../feedbackService';
@@ -41,6 +44,8 @@ export const reviewChecks = async (
     proposal?: Omit<ReviewProposalOutcome, 'respondedAt'>;
     /** Which of the three jobs a reject is doing; absent means unclassified. */
     rejectIntent?: AcceptanceRejectIntent;
+    /** Optional lifecycle fence for callers that projected a delivered round. */
+    expectedStatus?: 'delivered';
   },
 ): Promise<{ resultIds: string[] }> => {
   const acceptance = await deps.acceptanceModel.findById(acceptanceId);
@@ -108,6 +113,19 @@ export const reviewChecks = async (
   // so nothing could ever reconcile the pair again. Agreement analysis reads
   // those two rows as a matched set; a durable split is worse than failing.
   await deps.db.transaction(async (tx) => {
+    if (input.expectedStatus) {
+      const [locked] = await tx
+        .select({ status: acceptances.status })
+        .from(acceptances)
+        .where(eq(acceptances.id, acceptanceId))
+        .for('update');
+      if (locked?.status !== input.expectedStatus)
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `The acceptance is ${locked?.status ?? 'missing'}`,
+        });
+    }
+
     const resultModel = new VerifyCheckResultModel(tx, deps.userId, deps.workspaceId);
 
     // `checkItemIds` is request-supplied (a group-level accept can carry many),

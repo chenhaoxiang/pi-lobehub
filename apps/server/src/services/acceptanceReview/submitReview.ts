@@ -4,10 +4,12 @@ import { TRPCError } from '@trpc/server';
 import { AcceptanceReviewModel } from '@/database/models/acceptanceReview';
 import { ProjectModel } from '@/database/models/project';
 import { TaskModel } from '@/database/models/task';
+import { TaskTopicModel } from '@/database/models/taskTopic';
 import type { LobeChatDatabase } from '@/database/type';
 import { assertCanUseWorkspaceAgent } from '@/server/routers/lambda/_helpers/workspaceAgentGuard';
 import { taskRouter } from '@/server/routers/lambda/task';
 import { createTaskExecutionRouter } from '@/server/routers/lambda/task/execution';
+import { AcceptanceService } from '@/server/services/verify';
 
 import { projectReview } from './projection';
 import {
@@ -150,6 +152,30 @@ export const sendReviewRoundBack = async (
   const rework = flagged.length ? flagged : open;
   if (!rework.length)
     throw new TRPCError({ code: 'CONFLICT', message: 'Every mark in this round has passed' });
+
+  const taskRuns = await new TaskTopicModel(
+    db,
+    review.userId ?? actor.userId,
+    review.workspaceId ?? undefined,
+  ).findByTaskId(review.taskId);
+  const active = taskRuns.find((run) => run.status === 'running' && run.operationId);
+  if (active?.operationId) return { operationId: active.operationId, taskId: review.taskId };
+
+  const acceptance = projection.deliveryId
+    ? await db.query.acceptances.findFirst({
+        where: (rows, { eq }) => eq(rows.id, projection.deliveryId!),
+      })
+    : undefined;
+  if (!acceptance)
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Delivery acceptance not found' });
+  await new AcceptanceService(db, acceptance.userId, acceptance.workspaceId ?? undefined, {
+    actorUserId: actor.userId,
+  }).reject(acceptance.id, input.note);
+
+  await new TaskModel(db, acceptance.userId, acceptance.workspaceId ?? undefined).updateTaskConfig(
+    review.taskId,
+    { acceptanceReview: { markIds: rework.map((mark) => mark.id) } },
+  );
 
   return runTask(
     { userId: actor.userId, workspaceId: review.workspaceId },
