@@ -166,7 +166,7 @@ describe('AcceptanceService.reviewChecks', () => {
       metadata: {
         dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
       },
-      userDecision: 'rejected',
+      userDecision: null,
     };
     mocks.listByAcceptance.mockResolvedValue([
       { id: 'run-1', plan: [{ id: 'check-a', required: true, title: 'A' }], roundIndex: 1 },
@@ -180,6 +180,57 @@ describe('AcceptanceService.reviewChecks', () => {
       }),
     ).resolves.toMatchObject({ accepted: true });
     expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('does not let an explicit rejected decision hide behind a waived verifier failure', async () => {
+    const waivedRejected = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: 'rejected',
+    };
+    mocks.listByAcceptance.mockResolvedValue([
+      { id: 'run-1', plan: [{ id: 'check-a', required: true, title: 'A' }], roundIndex: 1 },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waivedRejected]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+      }),
+    ).resolves.toMatchObject({ accepted: false });
+    expect(mocks.updateStatus).not.toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('accepts mixed waived and explicitly accepted checks', async () => {
+    const waived = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: null,
+    };
+    const accepted = { ...result('r1-b', 'check-b', 'failed'), userDecision: 'accepted' };
+    mocks.listByAcceptance.mockResolvedValue([
+      {
+        id: 'run-1',
+        plan: [
+          { id: 'check-a', required: true, title: 'A' },
+          { id: 'check-b', required: true, title: 'B' },
+        ],
+        roundIndex: 1,
+      },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waived, accepted]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-b'],
+      }),
+    ).resolves.toMatchObject({ accepted: true });
   });
 
   it('accepts a delivered aggregate while holding the acceptance row lock', async () => {

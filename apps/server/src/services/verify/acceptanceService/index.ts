@@ -733,9 +733,10 @@ export class AcceptanceService {
         checks.length > 0 &&
         checks.every(
           (check) =>
-            check.waived ||
-            check.result?.userDecision === 'accepted' ||
-            check.result?.userDecision === 'overridden',
+            check.result?.userDecision !== 'rejected' &&
+            (check.waived ||
+              check.result?.userDecision === 'accepted' ||
+              check.result?.userDecision === 'overridden'),
         );
       if (accepted) {
         settled = await service.stampDecision(acceptanceId, 'accept');
