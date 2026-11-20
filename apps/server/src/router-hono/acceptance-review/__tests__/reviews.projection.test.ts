@@ -295,6 +295,41 @@ describe('a submitted review with a delivery', () => {
     expect(result.userDecision).toBeNull();
   });
 
+  it('does not send back after a concurrent aggregate acceptance', async () => {
+    await serverDB
+      .update(acceptances)
+      .set({ status: 'accepted' })
+      .where(eq(acceptances.id, deliveryId));
+
+    const response = await siteCall(ownerId, `/reviews/${reviewId}/send-back`, {
+      json: { note: 'Late repair request' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'INVALID_STATE' } });
+  });
+
+  it('rejects a final pass after a concurrent aggregate acceptance without writing', async () => {
+    await serverDB
+      .update(acceptances)
+      .set({ status: 'accepted' })
+      .where(eq(acceptances.id, deliveryId));
+
+    const response = await siteCall(memberId, `/reviews/${reviewId}/marks/${marks[1].id}/verdict`, {
+      json: { verdict: 'pass' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'INVALID_STATE' } });
+    const [result] = await serverDB
+      .select()
+      .from(verifyCheckResults)
+      .where(eq(verifyCheckResults.checkItemId, marks[1].id));
+    expect(result.userDecision).toBeNull();
+  });
+
   it('records a not-fixed verdict on the check without closing the delivery', async () => {
     const response = await siteCall(memberId, `/reviews/${reviewId}/marks/${marks[1].id}/verdict`, {
       json: { reason: 'Still grey', verdict: 'not_fixed' },

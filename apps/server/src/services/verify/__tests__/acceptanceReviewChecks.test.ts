@@ -98,6 +98,7 @@ describe('AcceptanceService.reviewChecks', () => {
     lockedStatus = 'delivered';
     mocks.resultModelScopes.length = 0;
     mocks.findById.mockResolvedValue({ id: 'acc-1', status: 'delivered' });
+    mocks.listByAcceptance.mockResolvedValue([{ id: 'run-2', roundIndex: 2 }]);
   });
 
   it.each([
@@ -142,6 +143,22 @@ describe('AcceptanceService.reviewChecks', () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
+  it('accepts a delivered aggregate while holding the acceptance row lock', async () => {
+    await service().accept('acc-1');
+
+    expect(db.transaction).toHaveBeenCalled();
+    expect(mocks.setDecision).toHaveBeenCalledWith('run-2', 'accept', expect.any(Object));
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('rejects a delivered aggregate while holding the acceptance row lock', async () => {
+    await service().reject('acc-1', 'needs another pass');
+
+    expect(db.transaction).toHaveBeenCalled();
+    expect(mocks.setDecision).toHaveBeenCalledWith('run-2', 'reject', expect.any(Object));
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'rejected');
+  });
+
   it('rechecks a delivered lifecycle fence while holding the acceptance row lock', async () => {
     lockedStatus = 'accepted';
 
@@ -153,6 +170,30 @@ describe('AcceptanceService.reviewChecks', () => {
       }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
     expect(mocks.resultUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not accept after the row lock observes a concurrent acceptance', async () => {
+    let reads = 0;
+    mocks.findById.mockImplementation(async () => {
+      reads += 1;
+      return { id: 'acc-1', status: reads === 1 ? 'delivered' : 'accepted' };
+    });
+
+    await expect(service().accept('acc-1')).rejects.toThrow('already been accepted');
+    expect(mocks.setDecision).not.toHaveBeenCalled();
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not reject after the row lock observes a concurrent acceptance', async () => {
+    let reads = 0;
+    mocks.findById.mockImplementation(async () => {
+      reads += 1;
+      return { id: 'acc-1', status: reads === 1 ? 'delivered' : 'accepted' };
+    });
+
+    await expect(service().reject('acc-1', 'late repair')).rejects.toThrow('already been accepted');
+    expect(mocks.setDecision).not.toHaveBeenCalled();
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
   });
 
   it('fails the whole decision when its proposal cannot be answered', async () => {

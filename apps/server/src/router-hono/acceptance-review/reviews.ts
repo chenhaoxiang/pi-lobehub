@@ -338,17 +338,18 @@ export const setMarkVerdict = async (c: ReviewContext) => {
     delivery.workspaceId ?? undefined,
     { actorUserId: c.get('userId') },
   );
-  await acceptanceService.reviewChecks(deliveryId, {
-    action: body.data.verdict === 'pass' ? 'accept' : 'reject',
+  const decision = {
+    action: body.data.verdict === 'pass' ? ('accept' as const) : ('reject' as const),
     checkItemIds: [check.checkId],
     comment: body.data.verdict === 'pass' ? body.data.reason : body.data.reason || 'Not fixed',
-    expectedStatus: 'delivered',
-  });
-
+  };
   if (body.data.verdict === 'pass') {
-    const after = await projectReview(db, found.row, marks);
-    const allPassed = marks.every((mark) => after.results.get(mark.id)?.human === 'pass');
-    if (allPassed) await acceptanceService.accept(deliveryId);
+    await acceptanceService.reviewChecksAndAccept(deliveryId, decision);
+  } else {
+    await acceptanceService.reviewChecks(deliveryId, {
+      ...decision,
+      expectedStatus: 'delivered',
+    });
   }
   return c.json(await describeReview(c, found.scope, found.row, { withMarks: true }));
 };
