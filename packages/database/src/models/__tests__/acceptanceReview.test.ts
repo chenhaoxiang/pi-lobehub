@@ -1,9 +1,10 @@
 // @vitest-environment node
+import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { getTestDB } from '../../core/getTestDB';
 import { ProjectRepository } from '../../repositories/project';
-import { tasks, users } from '../../schemas';
+import { acceptanceReviews, tasks, users } from '../../schemas';
 import type { LobeChatDatabase } from '../../type';
 import { AcceptanceReviewModel } from '../acceptanceReview';
 import { ProjectSiteModel } from '../projectReview';
@@ -175,6 +176,56 @@ describe('AcceptanceReviewModel marks', () => {
     await model.markSubmitted(review.id);
     expect(await model.updateMark(review.id, mark!.id, { content: 'late edit' })).toBeUndefined();
     expect(await model.deleteMark(review.id, mark!.id)).toBe(false);
+  });
+
+  it('serializes submission before a concurrent update or delete', async () => {
+    const hold = async (reviewId: string, operation: () => Promise<unknown>) => {
+      let release!: () => void;
+      let locked!: () => void;
+      const lockAcquired = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+      const lockReleased = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const lock = serverDB.transaction(async (tx) => {
+        await tx
+          .select({ id: acceptanceReviews.id })
+          .from(acceptanceReviews)
+          .where(eq(acceptanceReviews.id, reviewId))
+          .for('update');
+        locked();
+        await lockReleased;
+      });
+      await lockAcquired;
+      const submitted = model.markSubmitted(reviewId);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const mutation = operation();
+      release();
+      return { lock, mutation, submitted };
+    };
+
+    const updateReview = await draftOf(reviewer);
+    const updateMark = await model.addMark(updateReview.id, markInput('race-update'));
+    const updateRace = await hold(updateReview.id, () =>
+      model.updateMark(updateReview.id, updateMark!.id, { content: 'late update' }),
+    );
+    await updateRace.lock;
+    expect(await updateRace.submitted).toMatchObject({ status: 'submitted' });
+    expect(await updateRace.mutation).toBeUndefined();
+    expect((await model.findMark(updateReview.id, updateMark!.id))?.content).toBe(
+      'Cards are too tight',
+    );
+
+    const deleteReview = await draftOf(reviewer);
+    const deleteMark = await model.addMark(deleteReview.id, markInput('race-delete'));
+    const deleteRace = await hold(deleteReview.id, () =>
+      model.deleteMark(deleteReview.id, deleteMark!.id),
+    );
+    await deleteRace.lock;
+    expect(await deleteRace.submitted).toMatchObject({ status: 'submitted' });
+    expect(await deleteRace.mutation).toBe(false);
+    expect(await model.findMark(deleteReview.id, deleteMark!.id)).toBeDefined();
   });
 });
 

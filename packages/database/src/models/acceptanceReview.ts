@@ -214,28 +214,42 @@ export class AcceptanceReviewModel {
   };
 
   updateMark = async (reviewId: string, markId: string, patch: UpdateAcceptanceReviewMarkInput) => {
-    const review = await this.findById(reviewId);
-    if (review?.status !== 'draft') return undefined;
-    const [row] = await this.db
-      .update(acceptanceReviewMarks)
-      .set(patch)
-      .where(
-        and(eq(acceptanceReviewMarks.id, markId), eq(acceptanceReviewMarks.reviewId, reviewId)),
-      )
-      .returning();
-    return row;
+    return this.db.transaction(async (tx) => {
+      const [review] = await tx
+        .select({ status: acceptanceReviews.status })
+        .from(acceptanceReviews)
+        .where(eq(acceptanceReviews.id, reviewId))
+        .for('update');
+      if (review?.status !== 'draft') return undefined;
+
+      const [row] = await tx
+        .update(acceptanceReviewMarks)
+        .set(patch)
+        .where(
+          and(eq(acceptanceReviewMarks.id, markId), eq(acceptanceReviewMarks.reviewId, reviewId)),
+        )
+        .returning();
+      return row;
+    });
   };
 
   deleteMark = async (reviewId: string, markId: string) => {
-    const review = await this.findById(reviewId);
-    if (review?.status !== 'draft') return false;
-    const deleted = await this.db
-      .delete(acceptanceReviewMarks)
-      .where(
-        and(eq(acceptanceReviewMarks.id, markId), eq(acceptanceReviewMarks.reviewId, reviewId)),
-      )
-      .returning({ id: acceptanceReviewMarks.id });
-    return deleted.length > 0;
+    return this.db.transaction(async (tx) => {
+      const [review] = await tx
+        .select({ status: acceptanceReviews.status })
+        .from(acceptanceReviews)
+        .where(eq(acceptanceReviews.id, reviewId))
+        .for('update');
+      if (review?.status !== 'draft') return false;
+
+      const deleted = await tx
+        .delete(acceptanceReviewMarks)
+        .where(
+          and(eq(acceptanceReviewMarks.id, markId), eq(acceptanceReviewMarks.reviewId, reviewId)),
+        )
+        .returning({ id: acceptanceReviewMarks.id });
+      return deleted.length > 0;
+    });
   };
 
   findMark = async (reviewId: string, markId: string) => {
