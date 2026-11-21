@@ -44,6 +44,7 @@ const seed = async (options: SeedOptions = {}) => {
     createdByUserId: userId,
     id: taskId,
     identifier: `T-${seq}`,
+    currentTopicId: topicId,
     instruction: 'do the thing',
     seq,
     status: options.taskStatus ?? 'running',
@@ -249,10 +250,7 @@ describe('TaskRunClaimRepo', () => {
       true,
     );
 
-    await serverDB
-      .update(taskTopics)
-      .set({ operationId: 'op-new' })
-      .where(eq(taskTopics.topicId, topicId));
+    await topicModel.updateOperationId(taskId, topicId, 'op-new');
 
     expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(true);
   });

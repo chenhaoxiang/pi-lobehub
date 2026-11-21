@@ -254,10 +254,15 @@ export class TaskTopicModel {
     return canceled;
   }
 
+  /**
+   * Transfer the TaskTopic to a new operation generation and release the prior
+   * Verify finalizer claim in the same UPDATE. A continuation/repair child must
+   * not inherit a root claim that would otherwise be rejected by its generation.
+   */
   async updateOperationId(taskId: string, topicId: string, operationId?: string): Promise<void> {
     await this.db
       .update(taskTopics)
-      .set({ operationId })
+      .set({ operationId, verifyFinalizerClaim: null })
       .where(and(eq(taskTopics.taskId, taskId), eq(taskTopics.topicId, topicId), this.ownership()));
   }
 
