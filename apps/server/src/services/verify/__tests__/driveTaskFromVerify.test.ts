@@ -15,9 +15,13 @@ import { driveTaskFromVerify, finalizeVerifyRun } from '../settle';
 import { attachTaskRunToAcceptance, resolveTaskAcceptance } from '../taskAcceptance';
 
 vi.mock('../goalReview', () => ({ reviewGoalDelivery: vi.fn() }));
+const { hasStaleSettlementFence, isSupersededOperation } = vi.hoisted(() => ({
+  hasStaleSettlementFence: vi.fn(),
+  isSupersededOperation: vi.fn(),
+}));
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { isSupersededOperation: vi.fn().mockResolvedValue(false) };
+    return { hasStaleSettlementFence, isSupersededOperation };
   }),
 }));
 const { completeTaskForDelivery } = vi.hoisted(() => ({ completeTaskForDelivery: vi.fn() }));
@@ -530,6 +534,8 @@ describe('driveTaskFromVerify', () => {
     briefModelConstruct.mockImplementation(function () {
       return { create: briefCreate };
     });
+    hasStaleSettlementFence.mockReset().mockResolvedValue(false);
+    isSupersededOperation.mockReset().mockResolvedValue(false);
     opFindById.mockResolvedValue({ taskId: 'task-1', topicId: 'topic-done' });
     taskFindById.mockResolvedValue({
       assigneeAgentId: 'a1',
@@ -539,6 +545,18 @@ describe('driveTaskFromVerify', () => {
     });
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it('does not drive a stale-settled verify result', async () => {
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+
+    await driveTaskFromVerify(db, 'u1', 'op-1');
+
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+    expect(scheduleGoalAdvance).not.toHaveBeenCalled();
+  });
 
   it('passed → completes the task (with cascade), delivers the creator callback, marks done', async () => {
     runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });

@@ -154,8 +154,18 @@ export const driveTaskFromVerify = async (
     const op = await operationModel.findById(operationId);
     const taskOperation = await resolveTaskOperation(operationModel, operationId);
     const taskModel = new TaskModel(db, userId, workspaceId);
+    const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
     const ownsTaskRun = async () => {
       if (!taskOperation?.taskId) return true;
+      if (
+        taskOperation.topicId &&
+        (await taskTopicModel.hasStaleSettlementFence(
+          taskOperation.taskId,
+          taskOperation.topicId,
+          operationId,
+        ))
+      )
+        return false;
       const current = await taskModel.findById(taskOperation.taskId);
       if (!current) return false;
       // A new topic is another attempt of the same business Task. A continuation
@@ -163,10 +173,7 @@ export const driveTaskFromVerify = async (
       if (current.currentTopicId && current.currentTopicId !== taskOperation.topicId) return false;
       if (
         taskOperation.topicId &&
-        (await new TaskTopicModel(db, userId, workspaceId).isSupersededOperation(
-          taskOperation.topicId,
-          operationId,
-        ))
+        (await taskTopicModel.isSupersededOperation(taskOperation.topicId, operationId))
       )
         return false;
       const latest = await runModel.findByOperation(operationId);

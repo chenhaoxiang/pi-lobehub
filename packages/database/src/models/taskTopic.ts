@@ -152,6 +152,44 @@ export class TaskTopicModel {
   }
 
   /**
+   * Atomically settle the exact current operation. This is the lifecycle's
+   * terminal write fence: stale-settlement claims, normal completion writers,
+   * and continuation takeovers serialize on the same row update.
+   */
+  async settleRunIfCurrent(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+    status: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(taskTopics)
+      .set({ status })
+      .where(
+        and(
+          eq(taskTopics.taskId, taskId),
+          eq(taskTopics.topicId, topicId),
+          eq(taskTopics.operationId, operationId),
+          eq(taskTopics.status, 'running'),
+          this.ownership(),
+          notSupersededBy(operationId),
+          sql`not exists (
+            select 1
+            from jsonb_array_elements(coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb)) as stale_fence
+            where stale_fence->>'taskId' = ${taskId}
+              and stale_fence->>'topicId' = ${topicId}
+              and stale_fence->>'operationId' = ${operationId}
+          )`,
+        ),
+      )
+      .returning({ topicId: taskTopics.topicId });
+
+    if (rows.length === 0) return false;
+    if (TERMINAL_TOPIC_STATUSES.has(status)) await this.markTopicEnded(topicId, status);
+    return true;
+  }
+
+  /**
    * Atomically cancel a topic only if it is still in `running` status.
    * Returns true if a row was actually updated.
    */

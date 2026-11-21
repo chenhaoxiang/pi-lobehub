@@ -184,8 +184,6 @@ export class TaskLifecycleService {
     // ordering alone cannot fence a delayed completion of the previous attempt.
     if (topicId && currentTask?.currentTopicId && currentTask.currentTopicId !== topicId) return;
 
-    await this.taskModel.updateHeartbeat(taskId);
-
     // Whether a confirmed verify plan owns this run's delivery acceptance. Set in
     // the 'done' branch; gates both the pause-for-review skip and (below) the
     // creator callback — for verify-bound runs the callback is deferred to the
@@ -197,6 +195,7 @@ export class TaskLifecycleService {
       // 1. Update topic status
       if (topicId && !(await this.settleRunRow(taskId, topicId, params.operationId, 'completed')))
         return;
+      await this.taskModel.updateHeartbeat(taskId);
 
       // 2. Generate handoff summary + topic title (best-effort LLM synthesis).
       //    It also says which output the run delivered: its earlier report when
@@ -426,6 +425,7 @@ export class TaskLifecycleService {
         ))
       )
         return;
+      await this.taskModel.updateHeartbeat(taskId);
 
       const errorText = errorMessage || 'Unknown error';
 
@@ -599,16 +599,22 @@ export class TaskLifecycleService {
     operationId: string,
     status: string,
   ): Promise<boolean> {
-    const written = await this.taskTopicModel.updateStatus(taskId, topicId, status, {
-      reportedOperationId: operationId,
-    });
-    // Nothing written: either there is no row to keep honest (the runner has
-    // not recorded this run yet), or a newer run owns it.
-    if (written !== false) return true;
-    if (!(await this.isSupersededReport(topicId, operationId))) return true;
+    const written = await this.taskTopicModel.settleRunIfCurrent(
+      taskId,
+      topicId,
+      operationId,
+      status,
+    );
+    // A terminal write that affects zero rows means a stale fence, a normal
+    // terminal writer, a replacement operation, or a row that is not currently
+    // owned by this operation won the race. Never continue into handoff, brief,
+    // Task, Goal, Verify, or creator side effects after that loss.
+    if (!written) {
+      log('onTopicComplete: op=%s lost terminal ownership of topic=%s', operationId, topicId);
+      return false;
+    }
 
-    log('onTopicComplete: op=%s lost topic=%s to a follow-up mid-settle', operationId, topicId);
-    return false;
+    return true;
   }
 
   /**
