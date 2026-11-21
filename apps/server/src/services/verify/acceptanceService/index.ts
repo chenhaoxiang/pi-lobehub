@@ -10,6 +10,7 @@ import type {
 import { statusFromRound } from '@lobechat/utils/verify/acceptanceStatus';
 import { TRPCError } from '@trpc/server';
 import debug from 'debug';
+import { eq } from 'drizzle-orm';
 
 import { AcceptanceModel } from '@/database/models/acceptance';
 import { GoalModel } from '@/database/models/goal';
@@ -17,6 +18,7 @@ import { VerifyCheckResultModel } from '@/database/models/verifyCheckResult';
 import { VerifyEvidenceModel } from '@/database/models/verifyEvidence';
 import { VerifyReportModel } from '@/database/models/verifyReport';
 import { VerifyRunModel } from '@/database/models/verifyRun';
+import { acceptances } from '@/database/schemas';
 import type {
   AcceptanceItem,
   VerifyCheckResultItem,
@@ -204,20 +206,28 @@ export class AcceptanceService {
    * Chain a run onto an acceptance as its next round, then re-derive the
    * aggregate status (a new round re-opens a rejected loop).
    */
-  attachRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> => {
-    const acceptance = await this.acceptanceModel.findById(acceptanceId);
-    if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
-
-    return this.attachResolvedRun(runId, acceptance);
-  };
+  attachRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      });
+      return service.attachResolvedRun(runId, locked);
+    });
 
   /** Attach a Task run using policy scope while preserving report visibility. */
-  attachPolicyRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> => {
-    const acceptance = await this.acceptanceModel.findPolicyById(acceptanceId);
-    if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
-
-    return this.attachResolvedRun(runId, acceptance);
-  };
+  attachPolicyRun = async (runId: string, acceptanceId: string): Promise<AttachedRun> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      });
+      const acceptance = await service.acceptanceModel.findPolicyById(acceptanceId);
+      if (!acceptance) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      return service.attachResolvedRun(runId, acceptance);
+    });
 
   /**
    * File an ungrouped acceptance under the project its subject implies when a
@@ -283,7 +293,7 @@ export class AcceptanceService {
         : undefined;
     if (draft) {
       const folded = await this.runModel.foldIntoRound(runId, draft.id);
-      await this.recomputeStatus(acceptanceId);
+      await this.recomputeStatusLocked(acceptanceId, acceptance);
       log(
         'run %s folded into draft round %d of acceptance %s',
         runId,
@@ -297,7 +307,7 @@ export class AcceptanceService {
     // round never leaks through its own report URL.
     const run = await this.runModel.attachToAcceptance(runId, acceptanceId, acceptance.visibility);
     notifyAcceptance(acceptanceId, 'session');
-    await this.recomputeStatus(acceptanceId);
+    await this.recomputeStatusLocked(acceptanceId, acceptance);
     log('run %s attached to acceptance %s as round %d', runId, acceptanceId, run.roundIndex);
 
     // A new round landing is the first server-side proof that the reviewer is done with the
@@ -361,8 +371,20 @@ export class AcceptanceService {
    * user's `accepted` / `closed` are terminal; `rejected` is sticky until a
    * round newer than the decision arrives.
    */
-  recomputeStatus = async (acceptanceId: string): Promise<AcceptanceStatus | null> => {
-    const acceptance = await this.acceptanceModel.findPolicyById(acceptanceId);
+  recomputeStatus = async (acceptanceId: string): Promise<AcceptanceStatus | null> =>
+    this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) return null;
+      return new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      }).recomputeStatusLocked(acceptanceId, locked);
+    });
+
+  private recomputeStatusLocked = async (
+    acceptanceId: string,
+    locked?: AcceptanceItem,
+  ): Promise<AcceptanceStatus | null> => {
+    const acceptance = locked ?? (await this.acceptanceModel.findPolicyById(acceptanceId));
     if (!acceptance) return null;
     if (acceptance.status === 'accepted' || acceptance.status === 'closed') {
       return acceptance.status;
@@ -468,6 +490,15 @@ export class AcceptanceService {
    * same round twice is harmless — a round is distilled under a reflection key, and the second pass
    * finds the run already recorded and returns.
    */
+  private lockAcceptance = async (db: LobeChatDatabase, acceptanceId: string) => {
+    const [acceptance] = await db
+      .select()
+      .from(acceptances)
+      .where(eq(acceptances.id, acceptanceId))
+      .for('update');
+    return acceptance;
+  };
+
   private distilSettledRound = (acceptanceId: string, verifyRunId: string) => {
     void ExpertiseRejectionWorkflow.trigger({
       acceptanceId,
@@ -501,13 +532,21 @@ export class AcceptanceService {
     const { acceptance, settled } = goal
       ? await this.db.transaction(async (tx) => {
           await new GoalModel(tx, this.userId, this.workspaceId).lockById(goal.id);
+          await this.lockAcceptance(tx, acceptanceId);
           return decide(
             new AcceptanceService(tx, this.userId, this.workspaceId, {
               actorUserId: this.actorUserId,
             }),
           );
         })
-      : await decide(this);
+      : await this.db.transaction(async (tx) => {
+          await this.lockAcceptance(tx, acceptanceId);
+          return decide(
+            new AcceptanceService(tx, this.userId, this.workspaceId, {
+              actorUserId: this.actorUserId,
+            }),
+          );
+        });
     notifyAcceptance(acceptanceId, 'session', this.actorUserId);
 
     // A terminal decision settles the current round as surely as a new round landing does — and it
@@ -608,6 +647,7 @@ export class AcceptanceService {
               message: `This goal is archived; restore it before requesting changes (lh goal unarchive ${goal.id})`,
             });
           }
+          await this.lockAcceptance(tx, acceptanceId);
           await requireDecidableAcceptance(
             new AcceptanceModel(tx, this.userId, this.workspaceId),
             acceptanceId,
@@ -624,8 +664,16 @@ export class AcceptanceService {
           );
           return runId;
         })
-      : await this.stampDecision(acceptanceId, 'reject', comment);
-    if (!goal) await this.acceptanceModel.updateStatus(acceptanceId, 'rejected');
+      : await this.db.transaction(async (tx) => {
+          await this.lockAcceptance(tx, acceptanceId);
+          const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+            actorUserId: this.actorUserId,
+          });
+          await requireDecidableAcceptance(service.acceptanceModel, acceptanceId);
+          const runId = await service.stampDecision(acceptanceId, 'reject', comment);
+          await service.acceptanceModel.updateStatus(acceptanceId, 'rejected');
+          return runId;
+        });
     notifyAcceptance(acceptanceId, 'session', this.actorUserId);
 
     this.distilSettledRound(acceptanceId, settled);
@@ -638,6 +686,74 @@ export class AcceptanceService {
 
   /** Records the user's verdict on one or more union checks — see {@link reviewChecks}. */
   reviewChecks = (...args: WithoutDeps<typeof reviewChecks>) => reviewChecks(this.deps, ...args);
+
+  /**
+   * Records the final mark verdict and, when every current check is accepted,
+   * accepts the aggregate under the same acceptance-row lock. This prevents a
+   * last-check request from committing its mark and then racing a separate
+   * aggregate decision.
+   */
+  reviewChecksAndAccept = async (
+    acceptanceId: string,
+    input: WithoutDeps<typeof reviewChecks>[1],
+  ): Promise<{ accepted: boolean; resultIds: string[] }> => {
+    let accepted = false;
+    let resultIds: string[] = [];
+    let settled: string | undefined;
+    let subject: AcceptanceItem | undefined;
+
+    await this.db.transaction(async (tx) => {
+      const locked = await this.lockAcceptance(tx, acceptanceId);
+      if (!locked) throw new Error(`Acceptance "${acceptanceId}" not found`);
+      if (locked.status !== 'delivered') {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `The acceptance is ${locked.status}`,
+        });
+      }
+      subject = locked;
+      const service = new AcceptanceService(tx, this.userId, this.workspaceId, {
+        actorUserId: this.actorUserId,
+      });
+      ({ resultIds } = await service.reviewChecks(acceptanceId, {
+        ...input,
+        expectedStatus: 'delivered',
+      }));
+      const { results, runs } = await service.loadRounds(acceptanceId);
+      const resultsByRun = new Map<string, VerifyCheckResultItem[]>();
+      for (const result of results) {
+        const bucket = resultsByRun.get(result.verifyRunId!) ?? [];
+        bucket.push(result);
+        resultsByRun.set(result.verifyRunId!, bucket);
+      }
+      const checks = buildAcceptanceCheckUnion(
+        runs.map((run) => ({ results: resultsByRun.get(run.id) ?? [], run })),
+      );
+      accepted =
+        checks.length > 0 &&
+        checks.every(
+          (check) =>
+            check.result?.userDecision !== 'rejected' &&
+            (check.waived ||
+              check.result?.userDecision === 'accepted' ||
+              check.result?.userDecision === 'overridden'),
+        );
+      if (accepted) {
+        settled = await service.stampDecision(acceptanceId, 'accept');
+        await service.acceptanceModel.updateStatus(acceptanceId, 'accepted');
+      }
+    });
+
+    if (accepted && settled && subject) {
+      notifyAcceptance(acceptanceId, 'session', this.actorUserId);
+      this.distilSettledRound(acceptanceId, settled);
+      if (subject.subjectType === 'task') {
+        await completeTaskSubject(this.deps, subject.subjectId);
+        await resolveRepairComments(this.deps, subject);
+      }
+    }
+    return { accepted, resultIds };
+  };
 
   /** Stamps the decision on the current round and returns it — the round that decision settles. */
   private stampDecision = async (

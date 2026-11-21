@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   adjudicate: vi.fn(),
   findById: vi.fn(),
   listByAcceptance: vi.fn(),
+  listByRuns: vi.fn(),
+  listEvidenceByRuns: vi.fn(),
+  findReportsByRuns: vi.fn(),
   resultUpdate: vi.fn(),
   resultModelScopes: [] as unknown[],
   setDecision: vi.fn(),
@@ -30,10 +33,20 @@ vi.mock('@/database/models/verifyRun', () => ({
     return { listByAcceptance: mocks.listByAcceptance, setDecision: mocks.setDecision };
   }),
 }));
+vi.mock('@/database/models/verifyEvidence', () => ({
+  VerifyEvidenceModel: vi.fn(function () {
+    return { listByRuns: mocks.listEvidenceByRuns };
+  }),
+}));
+vi.mock('@/database/models/verifyReport', () => ({
+  VerifyReportModel: vi.fn(function () {
+    return { findByRuns: mocks.findReportsByRuns };
+  }),
+}));
 vi.mock('@/database/models/verifyCheckResult', () => ({
   VerifyCheckResultModel: vi.fn(function (db: unknown) {
     mocks.resultModelScopes.push(db);
-    return { update: mocks.resultUpdate };
+    return { listByRuns: mocks.listByRuns, update: mocks.resultUpdate };
   }),
 }));
 vi.mock('@/database/models/verifyReviewPrediction', () => ({
@@ -55,7 +68,18 @@ vi.mock('@/server/workflows/expertiseRejection', () => ({
   ExpertiseRejectionWorkflow: { trigger: mocks.trigger },
 }));
 
-const tx = { tx: true };
+let lockedStatus = 'delivered';
+const tx = {
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        for: async () => [{ status: lockedStatus }],
+      }),
+    }),
+  }),
+  transaction: async (run: (nested: unknown) => unknown) => run(tx),
+  tx: true,
+};
 const db = { transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(tx)) };
 
 const result = (id: string, checkItemId: string, verdict = 'failed') => ({
@@ -85,8 +109,13 @@ const service = () => {
 describe('AcceptanceService.reviewChecks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lockedStatus = 'delivered';
     mocks.resultModelScopes.length = 0;
     mocks.findById.mockResolvedValue({ id: 'acc-1', status: 'delivered' });
+    mocks.listByAcceptance.mockResolvedValue([{ id: 'run-2', roundIndex: 2 }]);
+    mocks.listByRuns.mockResolvedValue([]);
+    mocks.listEvidenceByRuns.mockResolvedValue([]);
+    mocks.findReportsByRuns.mockResolvedValue([]);
   });
 
   it.each([
@@ -129,6 +158,132 @@ describe('AcceptanceService.reviewChecks', () => {
       service().reviewChecks('acc-1', { action: 'accept', checkItemIds: ids }),
     ).rejects.toThrow(error);
     expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('accepts a waived-only union as an all-passed aggregate', async () => {
+    const waived = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: null,
+    };
+    mocks.listByAcceptance.mockResolvedValue([
+      { id: 'run-1', plan: [{ id: 'check-a', required: true, title: 'A' }], roundIndex: 1 },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waived]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+      }),
+    ).resolves.toMatchObject({ accepted: true });
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('does not let an explicit rejected decision hide behind a waived verifier failure', async () => {
+    const waivedRejected = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: 'rejected',
+    };
+    mocks.listByAcceptance.mockResolvedValue([
+      { id: 'run-1', plan: [{ id: 'check-a', required: true, title: 'A' }], roundIndex: 1 },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waivedRejected]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+      }),
+    ).resolves.toMatchObject({ accepted: false });
+    expect(mocks.updateStatus).not.toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('accepts mixed waived and explicitly accepted checks', async () => {
+    const waived = {
+      ...result('r1-a', 'check-a', 'failed'),
+      metadata: {
+        dispute: { arbitration: { outcome: 'upheld' }, kind: 'invalid_criterion' },
+      },
+      userDecision: null,
+    };
+    const accepted = { ...result('r1-b', 'check-b', 'failed'), userDecision: 'accepted' };
+    mocks.listByAcceptance.mockResolvedValue([
+      {
+        id: 'run-1',
+        plan: [
+          { id: 'check-a', required: true, title: 'A' },
+          { id: 'check-b', required: true, title: 'B' },
+        ],
+        roundIndex: 1,
+      },
+    ]);
+    mocks.listByRuns.mockResolvedValue([waived, accepted]);
+
+    await expect(
+      service().reviewChecksAndAccept('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-b'],
+      }),
+    ).resolves.toMatchObject({ accepted: true });
+  });
+
+  it('accepts a delivered aggregate while holding the acceptance row lock', async () => {
+    await service().accept('acc-1');
+
+    expect(db.transaction).toHaveBeenCalled();
+    expect(mocks.setDecision).toHaveBeenCalledWith('run-2', 'accept', expect.any(Object));
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'accepted');
+  });
+
+  it('rejects a delivered aggregate while holding the acceptance row lock', async () => {
+    await service().reject('acc-1', 'needs another pass');
+
+    expect(db.transaction).toHaveBeenCalled();
+    expect(mocks.setDecision).toHaveBeenCalledWith('run-2', 'reject', expect.any(Object));
+    expect(mocks.updateStatus).toHaveBeenCalledWith('acc-1', 'rejected');
+  });
+
+  it('rechecks a delivered lifecycle fence while holding the acceptance row lock', async () => {
+    lockedStatus = 'accepted';
+
+    await expect(
+      service().reviewChecks('acc-1', {
+        action: 'accept',
+        checkItemIds: ['check-a'],
+        expectedStatus: 'delivered',
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect(mocks.resultUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not accept after the row lock observes a concurrent acceptance', async () => {
+    let reads = 0;
+    mocks.findById.mockImplementation(async () => {
+      reads += 1;
+      return { id: 'acc-1', status: reads === 1 ? 'delivered' : 'accepted' };
+    });
+
+    await expect(service().accept('acc-1')).rejects.toThrow('already been accepted');
+    expect(mocks.setDecision).not.toHaveBeenCalled();
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('does not reject after the row lock observes a concurrent acceptance', async () => {
+    let reads = 0;
+    mocks.findById.mockImplementation(async () => {
+      reads += 1;
+      return { id: 'acc-1', status: reads === 1 ? 'delivered' : 'accepted' };
+    });
+
+    await expect(service().reject('acc-1', 'late repair')).rejects.toThrow('already been accepted');
+    expect(mocks.setDecision).not.toHaveBeenCalled();
+    expect(mocks.updateStatus).not.toHaveBeenCalled();
   });
 
   it('fails the whole decision when its proposal cannot be answered', async () => {

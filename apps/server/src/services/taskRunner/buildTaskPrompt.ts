@@ -18,6 +18,10 @@ import { VerifyCriterionModel } from '@/database/models/verifyCriterion';
 import { VerifyRubricModel } from '@/database/models/verifyRubric';
 import { VerifyRunModel } from '@/database/models/verifyRun';
 import type { LobeChatDatabase } from '@/database/type';
+import {
+  buildRoundMarksPrompt,
+  reviewContextOfTask,
+} from '@/server/services/acceptanceReview/roundContext';
 import { extractFileIdsFromEditorData } from '@/server/services/file/extractFileIdsFromEditorData';
 import { resolveAttachmentMetadata } from '@/server/services/file/resolveAttachments';
 import {
@@ -442,6 +446,15 @@ export async function buildTaskPrompt(
 
   const goalLoop = await resolveGoalLoopContext(task, deps);
 
+  const reviewContext = reviewContextOfTask(task.config);
+  const reviewMarks = reviewContext
+    ? await buildRoundMarksPrompt(db, reviewContext.reviewId, {
+        markIds: reviewContext.markIds,
+        userId,
+        workspaceId,
+      }).catch(() => undefined)
+    : undefined;
+
   const prompt = buildTaskRunPrompt({
     ...(goalLoop ? { goalLoop } : {}),
     activities: {
@@ -485,7 +498,7 @@ export async function buildTaskPrompt(
         };
       }),
     },
-    extraPrompt,
+    extraPrompt: [reviewMarks, extraPrompt].filter(Boolean).join('\n\n') || undefined,
     parentTask: parentTaskContext,
     task: {
       assigneeAgentId: task.assigneeAgentId,
