@@ -96,6 +96,56 @@ const createErrorParams = (
 });
 
 describe('TaskLifecycleService.onTopicComplete', () => {
+  it('stops all completion side effects when stale claim wins after the fence pre-read', async () => {
+    const service = new TaskLifecycleService({} as any, 'user-1');
+    const taskTopicModel = (service as any).taskTopicModel;
+    taskTopicModel.hasStaleSettlementFence = vi.fn().mockResolvedValue(false);
+    taskTopicModel.settleRunIfCurrent = vi.fn().mockResolvedValue(false);
+    taskTopicModel.updateStatus = vi.fn().mockResolvedValue(false);
+    const taskModel = (service as any).taskModel;
+    taskModel.findById = vi.fn().mockResolvedValue({
+      currentTopicId: 'topic-1',
+      id: 'task-1',
+      status: 'running',
+    });
+    taskModel.updateHeartbeat = vi.fn();
+    const handoff = vi.spyOn(service as any, 'generateHandoff').mockResolvedValue(undefined);
+    const bridge = vi.spyOn(service as any, 'bridgeResultToCreator').mockResolvedValue(undefined);
+
+    await service.onTopicComplete({
+      lastAssistantContent: 'late result',
+      operationId: 'op-stale',
+      reason: 'done',
+      taskId: 'task-1',
+      taskIdentifier: 'TASK-1',
+      topicId: 'topic-1',
+    });
+
+    expect(taskModel.updateHeartbeat).not.toHaveBeenCalled();
+    expect(handoff).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  it('fences a stale completion before terminal writes or creator bridging', async () => {
+    const service = new TaskLifecycleService({} as any, 'user-1');
+    const taskTopicModel = (service as any).taskTopicModel;
+    taskTopicModel.hasStaleSettlementFence = vi.fn().mockResolvedValue(true);
+    const bridge = vi.spyOn(service as any, 'bridgeResultToCreator').mockResolvedValue(undefined);
+    const updateHeartbeat = vi.fn();
+    (service as any).taskModel.updateHeartbeat = updateHeartbeat;
+
+    await service.onTopicComplete({
+      operationId: 'op-stale',
+      reason: 'done',
+      taskId: 'task-1',
+      taskIdentifier: 'TASK-1',
+      topicId: 'topic-1',
+    });
+
+    expect(updateHeartbeat).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
   let service: TaskLifecycleService;
   let updateStatus: ReturnType<typeof vi.fn>;
   let updateStatusIfCurrent: ReturnType<typeof vi.fn>;
@@ -123,7 +173,7 @@ describe('TaskLifecycleService.onTopicComplete', () => {
     updateContext = vi.fn().mockResolvedValue(null);
     findById = vi.fn();
     updateHeartbeat = vi.fn().mockResolvedValue(undefined);
-    updateTopicStatus = vi.fn().mockResolvedValue(undefined);
+    updateTopicStatus = vi.fn().mockResolvedValue(true);
     createBrief = vi.fn().mockResolvedValue(undefined);
     getReviewConfig = vi.fn().mockReturnValue(undefined);
     verifyFindByOperation.mockReset().mockResolvedValue(undefined);
@@ -139,6 +189,8 @@ describe('TaskLifecycleService.onTopicComplete', () => {
     taskModel.getCheckpointConfig = vi.fn().mockReturnValue({});
     // Default checkpoint behavior: pause after topic complete
     taskModel.shouldPauseOnTopicComplete = vi.fn().mockReturnValue(true);
+    (service as any).taskTopicModel.hasStaleSettlementFence = vi.fn().mockResolvedValue(false);
+    (service as any).taskTopicModel.settleRunIfCurrent = updateTopicStatus;
     // Avoid generateHandoff side effects by skipping when lastAssistantContent is undefined
     (service as any).taskTopicModel.updateStatus = updateTopicStatus;
     (service as any).taskTopicModel.updateHandoffContent = vi.fn().mockResolvedValue(undefined);

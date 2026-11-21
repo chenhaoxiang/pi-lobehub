@@ -12,6 +12,8 @@ import { isRunAlreadySettled, ORPHANED_RUN_GRACE_MS, reconcileOrphanedTaskRuns }
 const {
   findOrphanedRunningTopics,
   findRunByTopicId,
+  findRunningByTaskIds,
+  hasStaleSettlementFence,
   findTaskById,
   claimRun,
   onTopicComplete,
@@ -19,6 +21,8 @@ const {
 } = vi.hoisted(() => ({
   findOrphanedRunningTopics: vi.fn(),
   findRunByTopicId: vi.fn(),
+  findRunningByTaskIds: vi.fn(),
+  hasStaleSettlementFence: vi.fn(),
   findTaskById: vi.fn(),
   claimRun: vi.fn(),
   onTopicComplete: vi.fn(),
@@ -38,7 +42,11 @@ vi.mock('@/database/models/task', () => ({
 
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { findByTopicId: findRunByTopicId };
+    return {
+      findByTopicId: findRunByTopicId,
+      findRunningByTaskIds,
+      hasStaleSettlementFence,
+    };
   }),
 }));
 
@@ -242,8 +250,28 @@ describe('isRunAlreadySettled', () => {
     claimRun.mockReset().mockResolvedValue(true);
     onTopicComplete.mockReset().mockResolvedValue(undefined);
     findRunByTopicId.mockReset();
+    findRunningByTaskIds.mockReset().mockResolvedValue([]);
+    hasStaleSettlementFence.mockReset().mockResolvedValue(false);
     findTaskById.mockReset();
   });
+
+  it.each(['done', 'interrupted', 'error'])(
+    'fences a stale-settled %s callback even while the replacement is not bound',
+    async (reason) => {
+      hasStaleSettlementFence.mockResolvedValue(true);
+
+      expect(
+        await isRunAlreadySettled(db, 'user-1', undefined, {
+          operationId: 'op-stale',
+          reason,
+          taskId: 'task-1',
+          topicId: 'tpc-1',
+        }),
+      ).toBe(true);
+      expect(findRunByTopicId).not.toHaveBeenCalled();
+      expect(findTaskById).not.toHaveBeenCalled();
+    },
+  );
 
   it('fences a delayed failure callback that lands after the sweep settled the run', async () => {
     // Regression: the sweep's claim only excluded competing sweeps. A QStash
@@ -309,6 +337,40 @@ describe('isRunAlreadySettled', () => {
     expect(
       await isRunAlreadySettled(db, 'user-1', undefined, { ...callback, reason: 'interrupted' }),
     ).toBe(false);
-    expect(findRunByTopicId).not.toHaveBeenCalled();
+  });
+
+  it.each(['done', 'error', 'interrupted'])(
+    'fences a late %s delivery once the Task has started its next run',
+    async (reason) => {
+      // The runner settled this leftover run and started a new one; the old
+      // run's delayed delivery must not move the Task under the live run.
+      findRunByTopicId.mockResolvedValue({
+        operationId: 'op-1',
+        status: 'completed',
+        taskId: 'task-1',
+        topicId: 'tpc-1',
+      });
+      findRunningByTaskIds.mockResolvedValue([
+        { operationId: 'op-2', status: 'running', taskId: 'task-1', topicId: 'tpc-2' },
+      ]);
+      findTaskById.mockResolvedValue({ id: 'task-1', status: 'running' });
+
+      expect(await isRunAlreadySettled(db, 'user-1', undefined, { ...callback, reason })).toBe(
+        true,
+      );
+    },
+  );
+
+  it('lets a delivery through while its own run is the one still running', async () => {
+    const run = { operationId: 'op-1', status: 'running', taskId: 'task-1', topicId: 'tpc-1' };
+    findRunByTopicId.mockResolvedValue(run);
+    findRunningByTaskIds.mockResolvedValue([
+      run,
+      { operationId: 'op-2', status: 'running', taskId: 'task-1', topicId: 'tpc-2' },
+    ]);
+
+    expect(
+      await isRunAlreadySettled(db, 'user-1', undefined, { ...callback, reason: 'done' }),
+    ).toBe(false);
   });
 });

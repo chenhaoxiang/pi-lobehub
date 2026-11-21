@@ -15,9 +15,21 @@ import { driveTaskFromVerify, finalizeVerifyRun } from '../settle';
 import { attachTaskRunToAcceptance, resolveTaskAcceptance } from '../taskAcceptance';
 
 vi.mock('../goalReview', () => ({ reviewGoalDelivery: vi.fn() }));
+const { claimVerifyFinalizer, findByTopicId, hasStaleSettlementFence, isSupersededOperation } =
+  vi.hoisted(() => ({
+    claimVerifyFinalizer: vi.fn(),
+    findByTopicId: vi.fn(),
+    hasStaleSettlementFence: vi.fn(),
+    isSupersededOperation: vi.fn(),
+  }));
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { isSupersededOperation: vi.fn().mockResolvedValue(false) };
+    return {
+      claimVerifyFinalizer,
+      findByTopicId,
+      hasStaleSettlementFence,
+      isSupersededOperation,
+    };
   }),
 }));
 const { completeTaskForDelivery } = vi.hoisted(() => ({ completeTaskForDelivery: vi.fn() }));
@@ -37,7 +49,7 @@ vi.mock('../repairService', () => ({
 }));
 vi.mock('../reporter', () => ({
   VerifyReporterService: vi.fn(function () {
-    return { generateReport: vi.fn() };
+    return { generateReport };
   }),
 }));
 
@@ -51,6 +63,7 @@ const {
   taskUpdateStatus,
   briefModelConstruct,
   briefCreate,
+  generateReport,
   serviceUpdateStatus,
   statusRecompute,
   deliverMock,
@@ -58,6 +71,7 @@ const {
   goalFindByTask: vi.fn(),
   briefCreate: vi.fn(),
   briefModelConstruct: vi.fn(),
+  generateReport: vi.fn(),
   deliverMock: vi.fn(),
   opFindById: vi.fn(),
   runFindByOperation: vi.fn(),
@@ -503,6 +517,8 @@ describe('driveTaskFromVerify', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(maybeAutoRepair).mockReset().mockResolvedValue(undefined);
+    vi.mocked(repairRejectedReview).mockReset().mockResolvedValue(null);
     vi.mocked(reviewGoalDelivery).mockReset();
     vi.mocked(resolveTaskAcceptance).mockReset().mockResolvedValue(undefined);
     vi.mocked(attachTaskRunToAcceptance)
@@ -523,6 +539,7 @@ describe('driveTaskFromVerify', () => {
       serviceUpdateStatus,
       statusRecompute,
       deliverMock,
+      generateReport,
     ].forEach((m) => m.mockReset());
     // The drive is claimed before any side effect; unclaimed means "someone
     // else is driving this run", which every test here is not.
@@ -530,15 +547,128 @@ describe('driveTaskFromVerify', () => {
     briefModelConstruct.mockImplementation(function () {
       return { create: briefCreate };
     });
+    claimVerifyFinalizer.mockReset().mockResolvedValue(true);
+    findByTopicId.mockReset().mockImplementation(async (topicId: string) => ({
+      taskId: 'task-1',
+      topicId,
+    }));
+    hasStaleSettlementFence.mockReset().mockResolvedValue(false);
+    isSupersededOperation.mockReset().mockResolvedValue(false);
     opFindById.mockResolvedValue({ taskId: 'task-1', topicId: 'topic-done' });
     taskFindById.mockResolvedValue({
       assigneeAgentId: 'a1',
+      currentTopicId: 'topic-done',
       id: 'task-1',
       identifier: 'T-1',
       status: 'running',
     });
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it('does not drive a stale-settled verify result', async () => {
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+
+    await driveTaskFromVerify(db, 'u1', 'op-1');
+
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+    expect(scheduleGoalAdvance).not.toHaveBeenCalled();
+  });
+
+  it('stops before repair when ownership is lost after the initial preflight', async () => {
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+    claimVerifyFinalizer.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await finalizeVerifyRun(db, 'u1', 'op-1', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+
+  it('stale task finalization exits before repair, report, ancestor, or drive side effects', async () => {
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+    vi.mocked(maybeAutoRepair).mockResolvedValue({ repairOperationId: 'repair-op' });
+
+    await finalizeVerifyRun(db, 'u1', 'op-1', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['old topic', { currentTopicId: 'topic-new' }, { userDecision: undefined }],
+    ['rejected round', { currentTopicId: 'topic-done' }, { userDecision: 'reject' }],
+    [
+      'terminal Task',
+      { currentTopicId: 'topic-done', status: 'completed' },
+      { userDecision: undefined },
+    ],
+  ])(
+    'finalizer skips task-bound %s before repair/report/ancestor/drive side effects',
+    async (_label, taskOverride, runOverride) => {
+      taskFindById.mockResolvedValue({
+        assigneeAgentId: 'a1',
+        currentTopicId: 'topic-done',
+        id: 'task-1',
+        identifier: 'T-1',
+        status: 'running',
+        ...taskOverride,
+      });
+      runFindByOperation.mockResolvedValue({
+        id: 'run-1',
+        metadata: null,
+        status: 'passed',
+        ...runOverride,
+      });
+
+      await finalizeVerifyRun(db, 'u1', 'op-1', {
+        report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+      });
+
+      expect(maybeAutoRepair).not.toHaveBeenCalled();
+      expect(generateReport).not.toHaveBeenCalled();
+      expect(statusRecompute).not.toHaveBeenCalled();
+      expect(runClaimTaskDrive).not.toHaveBeenCalled();
+      expect(serviceUpdateStatus).not.toHaveBeenCalled();
+      expect(deliverMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('finalizer skips a repair child when its root attempt is stale-fenced', async () => {
+    opFindById.mockImplementation(async (id: string) =>
+      id === 'repair-op'
+        ? { id: 'repair-op', parentOperationId: 'root-op', taskId: 'task-1', topicId: 'topic-done' }
+        : { id: 'root-op', parentOperationId: null, taskId: 'task-1', topicId: 'topic-done' },
+    );
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+
+    await finalizeVerifyRun(db, 'u1', 'repair-op', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
 
   it('passed → completes the task (with cascade), delivers the creator callback, marks done', async () => {
     runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
@@ -576,6 +706,13 @@ describe('driveTaskFromVerify', () => {
   });
 
   it('settles the owning task when the passing verify run belongs to a repair child', async () => {
+    taskFindById.mockResolvedValue({
+      assigneeAgentId: 'a1',
+      currentTopicId: 'topic-original',
+      id: 'task-1',
+      identifier: 'T-1',
+      status: 'running',
+    });
     runFindByOperation.mockResolvedValue({ id: 'repair-run', metadata: null, status: 'passed' });
     opFindById.mockImplementation(async (id: string) =>
       id === 'repair-op'
@@ -597,6 +734,13 @@ describe('driveTaskFromVerify', () => {
 
   it('collapses every ancestor round out of repairing when a multi-repair child settles', async () => {
     runFindByOperation.mockResolvedValue({ id: 'repair-run', metadata: null, status: 'passed' });
+    taskFindById.mockResolvedValue({
+      assigneeAgentId: 'a1',
+      currentTopicId: 'topic-original',
+      id: 'task-1',
+      identifier: 'T-1',
+      status: 'running',
+    });
     opFindById.mockImplementation(async (id: string) =>
       id === 'repair-op-2'
         ? { parentOperationId: 'repair-op-1', taskId: null, topicId: 'topic-repair' }

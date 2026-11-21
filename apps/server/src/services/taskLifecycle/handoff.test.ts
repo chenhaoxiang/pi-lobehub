@@ -63,6 +63,8 @@ describe('TaskLifecycleService handoff', () => {
     taskModel.updateStatusIfCurrent = vi.fn();
     taskModel.getCheckpointConfig = vi.fn().mockReturnValue({});
     taskModel.shouldPauseOnTopicComplete = vi.fn().mockReturnValue(false);
+    (service as any).taskTopicModel.hasStaleSettlementFence = vi.fn().mockResolvedValue(false);
+    (service as any).taskTopicModel.settleRunIfCurrent = vi.fn().mockResolvedValue(true);
 
     updateHandoff = vi.fn();
     updateHandoffContent = vi.fn();

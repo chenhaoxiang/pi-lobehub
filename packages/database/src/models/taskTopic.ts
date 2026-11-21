@@ -4,11 +4,11 @@ import {
   TRANSIENT_FAILED_RUN_STATUS,
 } from '@lobechat/const/goal';
 import type { BriefDecision, TaskTopicHandoff } from '@lobechat/types';
-import { and, count, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { agentOperations } from '../schemas/agentOperations';
-import type { TaskTopicItem } from '../schemas/task';
+import type { TaskRunStaleSettlementFence, TaskTopicItem } from '../schemas/task';
 import { tasks, taskTopics } from '../schemas/task';
 import { topics } from '../schemas/topic';
 import type { LobeChatDatabase } from '../type';
@@ -152,6 +152,44 @@ export class TaskTopicModel {
   }
 
   /**
+   * Atomically settle the exact current operation. This is the lifecycle's
+   * terminal write fence: stale-settlement claims, normal completion writers,
+   * and continuation takeovers serialize on the same row update.
+   */
+  async settleRunIfCurrent(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+    status: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(taskTopics)
+      .set({ status })
+      .where(
+        and(
+          eq(taskTopics.taskId, taskId),
+          eq(taskTopics.topicId, topicId),
+          eq(taskTopics.operationId, operationId),
+          eq(taskTopics.status, 'running'),
+          this.ownership(),
+          notSupersededBy(operationId),
+          sql`not exists (
+            select 1
+            from jsonb_array_elements(coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb)) as stale_fence
+            where stale_fence->>'taskId' = ${taskId}
+              and stale_fence->>'topicId' = ${topicId}
+              and stale_fence->>'operationId' = ${operationId}
+          )`,
+        ),
+      )
+      .returning({ topicId: taskTopics.topicId });
+
+    if (rows.length === 0) return false;
+    if (TERMINAL_TOPIC_STATUSES.has(status)) await this.markTopicEnded(topicId, status);
+    return true;
+  }
+
+  /**
    * Atomically cancel a topic only if it is still in `running` status.
    * Returns true if a row was actually updated.
    */
@@ -216,10 +254,15 @@ export class TaskTopicModel {
     return canceled;
   }
 
+  /**
+   * Transfer the TaskTopic to a new operation generation and release the prior
+   * Verify finalizer claim in the same UPDATE. A continuation/repair child must
+   * not inherit a root claim that would otherwise be rejected by its generation.
+   */
   async updateOperationId(taskId: string, topicId: string, operationId?: string): Promise<void> {
     await this.db
       .update(taskTopics)
-      .set({ operationId })
+      .set({ operationId, verifyFinalizerClaim: null })
       .where(and(eq(taskTopics.taskId, taskId), eq(taskTopics.topicId, topicId), this.ownership()));
   }
 
@@ -313,15 +356,42 @@ export class TaskTopicModel {
    * topic's end stamp is the caller's to commit alongside it — see
    * `TaskRunClaimRepo`.
    */
-  async claimRunIfRunning(topicId: string, operationId: string, status: string): Promise<boolean> {
+  async claimRunIfRunning(
+    topicId: string,
+    operationId: string,
+    status: string,
+    staleFence?: Omit<TaskRunStaleSettlementFence, 'settledAt'> & { settledAt?: Date },
+  ): Promise<boolean> {
+    const fenceValue = staleFence
+      ? {
+          attempt: staleFence.attempt,
+          operationId: staleFence.operationId,
+          settledAt: (staleFence.settledAt ?? new Date()).toISOString(),
+          taskId: staleFence.taskId,
+          topicId: staleFence.topicId,
+        }
+      : undefined;
     const result = await this.db
       .update(taskTopics)
-      .set({ status })
+      .set({
+        ...(fenceValue
+          ? {
+              staleSettlementFences: sql`coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb) || ${JSON.stringify([fenceValue])}::jsonb`,
+            }
+          : {}),
+        status,
+      })
       .where(
         and(
           eq(taskTopics.topicId, topicId),
           eq(taskTopics.operationId, operationId),
           eq(taskTopics.status, 'running'),
+          staleFence
+            ? sql`(
+                ${taskTopics.verifyFinalizerClaim} is null
+                or (${taskTopics.verifyFinalizerClaim}->>'claimedAt')::timestamptz < now() - interval '10 minutes'
+              )`
+            : undefined,
           this.ownership(),
         ),
       )
@@ -454,7 +524,75 @@ export class TaskTopicModel {
     return !!row;
   }
 
-  /** Undo {@link markTopicEnded}'s end stamp for a run that is live again. */
+  /**
+   * Whether this exact Task/Topic/Operation has a durable stale-settlement fence.
+   * The fence survives a continuation replacing the topic's current operation.
+   */
+  async claimVerifyFinalizer(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const claim = {
+      attemptId,
+      claimedAt: new Date().toISOString(),
+      operationId,
+      taskId,
+      topicId,
+    };
+    const rows = await this.db
+      .update(taskTopics)
+      .set({ verifyFinalizerClaim: claim })
+      .where(
+        and(
+          eq(taskTopics.taskId, taskId),
+          eq(taskTopics.topicId, topicId),
+          or(eq(taskTopics.operationId, operationId), eq(taskTopics.operationId, attemptId)),
+          notSupersededBy(operationId),
+          this.ownership(),
+          sql`exists (
+            select 1 from ${tasks} as current_task
+            where current_task.id = ${taskId}
+              and current_task.current_topic_id = ${topicId}
+              and current_task.status not in ('completed', 'failed', 'canceled')
+          )`,
+          sql`not exists (
+            select 1
+            from jsonb_array_elements(coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb)) as stale_fence
+            where stale_fence->>'taskId' = ${taskId}
+              and stale_fence->>'topicId' = ${topicId}
+              and (stale_fence->>'operationId' = ${operationId}
+                or stale_fence->>'operationId' = ${attemptId})
+          )`,
+          sql`(
+            ${taskTopics.verifyFinalizerClaim} is null
+            or ${taskTopics.verifyFinalizerClaim}->>'attemptId' = ${attemptId}
+            or (${taskTopics.verifyFinalizerClaim}->>'claimedAt')::timestamptz < now() - interval '10 minutes'
+          )`,
+        ),
+      )
+      .returning({ topicId: taskTopics.topicId });
+    return rows.length > 0;
+  }
+
+  async hasStaleSettlementFence(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+  ): Promise<boolean> {
+    const [row] = await this.db
+      .select({ fences: taskTopics.staleSettlementFences })
+      .from(taskTopics)
+      .where(and(eq(taskTopics.taskId, taskId), eq(taskTopics.topicId, topicId), this.ownership()))
+      .limit(1);
+
+    return (row?.fences ?? []).some(
+      (fence) =>
+        fence.taskId === taskId && fence.topicId === topicId && fence.operationId === operationId,
+    );
+  }
+
   async clearTopicEnded(topicId: string): Promise<void> {
     await this.db
       .update(topics)

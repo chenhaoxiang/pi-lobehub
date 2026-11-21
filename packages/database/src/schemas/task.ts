@@ -230,6 +230,18 @@ export type TaskDocumentItem = typeof taskDocuments.$inferSelect;
 
 // ── Task Topics ─────────────────────────────────────────
 
+export interface TaskRunStaleSettlementFence {
+  /** The TaskTopic sequence identifying the attempt. */
+  attempt: number;
+  /** The operation that was explicitly settled as stale. */
+  operationId: string;
+  settledAt: string;
+  /** The Task row that owned the stale attempt when it was retired. */
+  taskId: string;
+  /** The topic row whose old completion must remain fenced. */
+  topicId: string;
+}
+
 export const taskTopics = pgTable(
   'task_topics',
   {
@@ -245,6 +257,23 @@ export const taskTopics = pgTable(
 
     seq: integer('seq').notNull(), // topic sequence within task (1, 2, 3...)
     operationId: text('operation_id'), // agent execution operation ID
+    /**
+     * Durable fences for runs explicitly retired as stale by TaskRunner. Kept
+     * separate from normal terminal status so a late completion remains fenced
+     * after a continuation replaces operationId on this topic.
+     */
+    staleSettlementFences: jsonb('stale_settlement_fences')
+      .$type<TaskRunStaleSettlementFence[]>()
+      .notNull()
+      .default([]),
+    /** Short-lived atomic claim held while Verify finalizes this Task attempt. */
+    verifyFinalizerClaim: jsonb('verify_finalizer_claim').$type<{
+      attemptId: string;
+      claimedAt: string;
+      operationId: string;
+      taskId: string;
+      topicId: string;
+    }>(),
     // 'running' | 'completed' | 'failed' | 'timeout' | 'canceled'
     status: text('status').notNull().default('running'),
 

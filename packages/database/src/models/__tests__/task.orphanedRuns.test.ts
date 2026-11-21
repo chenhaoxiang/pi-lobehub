@@ -7,6 +7,7 @@ import { TaskRunClaimRepo } from '../../repositories/taskRunClaim';
 import { agentOperations, tasks, taskTopics, topics, users } from '../../schemas';
 import type { LobeChatDatabase } from '../../type';
 import { TaskModel } from '../task';
+import { TaskTopicModel } from '../taskTopic';
 
 const serverDB: LobeChatDatabase = await getTestDB();
 
@@ -43,6 +44,7 @@ const seed = async (options: SeedOptions = {}) => {
     createdByUserId: userId,
     id: taskId,
     identifier: `T-${seq}`,
+    currentTopicId: topicId,
     instruction: 'do the thing',
     seq,
     status: options.taskStatus ?? 'running',
@@ -234,6 +236,48 @@ describe('TaskModel.findInterruptedRunningTopics', () => {
 });
 
 describe('TaskRunClaimRepo', () => {
+  it('claims only the current generation and transfers to its continuation', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const topicModel = new TaskTopicModel(serverDB, userId);
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, operationId, operationId)).toBe(
+      true,
+    );
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(false);
+    // A repair child can keep the root operation on TaskTopic while claiming
+    // the same attempt; a continuation transfers the row to its new generation.
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-repair', operationId)).toBe(
+      true,
+    );
+
+    await topicModel.updateOperationId(taskId, topicId, 'op-new');
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(true);
+  });
+
+  it('rejects a repair child when either the root or child attempt is stale-fenced', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const topicModel = new TaskTopicModel(serverDB, userId);
+    await serverDB
+      .update(taskTopics)
+      .set({
+        staleSettlementFences: [
+          {
+            attempt: 1,
+            operationId,
+            settledAt: new Date().toISOString(),
+            taskId,
+            topicId,
+          },
+        ],
+      })
+      .where(eq(taskTopics.topicId, topicId));
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-repair', operationId)).toBe(
+      false,
+    );
+  });
+
   it('flips a run that still names its own operation out of `running`', async () => {
     const { operationId, topicId } = await seed();
     const model = new TaskRunClaimRepo(serverDB, userId);
@@ -243,6 +287,25 @@ describe('TaskRunClaimRepo', () => {
     expect((await readRun(topicId)).status).toBe('failed');
     // The run is over, so the topic gets its end stamp too.
     expect((await readTopic(topicId)).completedAt).toBeInstanceOf(Date);
+  });
+
+  it('persists a stale-settlement fence with the exact attempt identity', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const model = new TaskRunClaimRepo(serverDB, userId);
+
+    expect(
+      await model.claimStale(topicId, operationId, 'completed', {
+        attempt: 1,
+        operationId,
+        taskId,
+        topicId,
+      }),
+    ).toBe(true);
+
+    const run = await readRun(topicId);
+    expect(run.staleSettlementFences).toEqual([
+      expect.objectContaining({ attempt: 1, operationId, taskId, topicId }),
+    ]);
   });
 
   it('leaves the run `running` when the topic end stamp fails', async () => {

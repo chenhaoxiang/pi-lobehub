@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   complete: vi.fn(),
   deliver: vi.fn(),
   findTask: vi.fn(),
+  hasStaleSettlementFence: vi.fn(),
   pause: vi.fn(),
   resolveAcceptance: vi.fn(),
   review: vi.fn(),
@@ -30,7 +31,10 @@ vi.mock('@/database/models/task', () => ({
 }));
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { isSupersededOperation: m.superseded };
+    return {
+      hasStaleSettlementFence: m.hasStaleSettlementFence,
+      isSupersededOperation: m.superseded,
+    };
   }),
 }));
 vi.mock('@/database/models/goal', () => ({
@@ -69,6 +73,7 @@ beforeEach(() => {
   m.claim.mockResolvedValue(true);
   m.findTask.mockResolvedValue({ ...task });
   m.review.mockResolvedValue(undefined);
+  m.hasStaleSettlementFence.mockResolvedValue(false);
   m.superseded.mockResolvedValue(false);
 });
 
