@@ -26,6 +26,11 @@ import AcceptanceShare from './Header/AcceptanceShare';
 import AcceptanceStatusControl from './Header/AcceptanceStatusControl';
 import type { AcceptanceTabKey } from './Header/AcceptanceTabs';
 import AcceptanceTabs from './Header/AcceptanceTabs';
+import { AcceptanceVerdictSummary } from './Header/AcceptanceVerdictSummary';
+import {
+  resolveAcceptanceDecisionTime,
+  resolveAcceptanceLastVerifiedAt,
+} from './verdict';
 import {
   acceptanceContentLayout,
   acceptanceReadingColumnMaxWidth,
@@ -88,6 +93,24 @@ export const AcceptanceOverview = ({
   // A Goal decision gate reviews its own frozen dossier, not a checklist.
   const gateDossier =
     data?.subject.type === 'goal_gate' ? rounds.at(-1)?.run.metadata?.releaseGate : undefined;
+  const verdictCounts = data
+    ? checks.reduce(
+        (counts, check) => {
+          if (check.waived) return counts;
+          if (check.state === 'passed') counts.passed += 1;
+          else if (check.state === 'failed') counts.failed += 1;
+          else if (check.state === 'uncertain') counts.uncertain += 1;
+          else if (check.state === 'not_executed') counts.notExecuted += 1;
+          return counts;
+        },
+        { failed: 0, notExecuted: 0, passed: 0, uncertain: 0 },
+      )
+    : undefined;
+  const lastVerifiedAt = resolveAcceptanceLastVerifiedAt(rounds);
+  const decisionAt = resolveAcceptanceDecisionTime(
+    data?.acceptance.status,
+    data?.acceptance.completedAt,
+  );
   const resourceCount = new Set(
     checks.flatMap((check) =>
       (check.evidence ?? [])
@@ -124,6 +147,11 @@ export const AcceptanceOverview = ({
             </Flexbox>
             <AcceptanceShare />
           </Flexbox>
+          <AcceptanceVerdictSummary
+            counts={verdictCounts}
+            decisionAt={decisionAt}
+            lastVerifiedAt={lastVerifiedAt}
+          />
           {!gateDossier && <AcceptanceGoal editSlot={<AcceptanceGoalEdit />} />}
           {/* About the delivery as a whole, not one tab's face of it — a reviewer
               reading the discussion needs it as much as one on the checklist. */}

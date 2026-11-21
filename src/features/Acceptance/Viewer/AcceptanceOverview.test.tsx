@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AcceptanceOverview } from './AcceptanceOverview';
 
 const bundle = vi.hoisted(() => ({ current: undefined as unknown }));
+const summaryProps = vi.hoisted(() => ({
+  current: undefined as Record<string, unknown> | undefined,
+}));
 
 vi.mock('./AcceptanceScope', () => ({
   useAcceptanceScope: () => ({ acceptanceId: 'acc-1', embedded: false }),
@@ -39,6 +42,12 @@ vi.mock('./Header/AcceptanceGoalEdit', () => ({ default: () => null }));
 vi.mock('./Header/AcceptanceIdentity', () => ({ default: () => <div>identity-stub</div> }));
 vi.mock('./Header/AcceptanceStatusControl', () => ({ default: () => null }));
 vi.mock('./Header/AcceptanceTabs', () => ({ default: () => null }));
+vi.mock('./Header/AcceptanceVerdictSummary', () => ({
+  AcceptanceVerdictSummary: (props: Record<string, unknown>) => {
+    summaryProps.current = props;
+    return null;
+  },
+}));
 vi.mock('./Review/AcceptanceDecision', () => ({ default: () => null }));
 
 const buildBundle = (overrides: {
@@ -67,6 +76,7 @@ const renderOverview = () =>
 
 beforeEach(() => {
   bundle.current = undefined;
+  summaryProps.current = undefined;
 });
 
 afterEach(cleanup);
@@ -140,5 +150,23 @@ describe('AcceptanceOverview sharing', () => {
 
     expect(screen.getByText('identity-stub')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /acceptance\.share\.title/ })).toBeNull();
+  });
+
+  it('keeps the status control as the only header status entry', () => {
+    bundle.current = {
+      ...buildBundle({ canReview: true, visibility: 'public' }),
+      acceptance: {
+        ...buildBundle({ canReview: true, visibility: 'public' }).acceptance,
+        status: 'delivered',
+      },
+    };
+    renderOverview();
+
+    expect(summaryProps.current).toEqual({
+      counts: expect.any(Object),
+      decisionAt: undefined,
+      lastVerifiedAt: undefined,
+    });
+    expect(summaryProps.current).not.toHaveProperty('status');
   });
 });
