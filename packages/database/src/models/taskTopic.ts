@@ -546,12 +546,19 @@ export class TaskTopicModel {
           or(eq(taskTopics.operationId, operationId), eq(taskTopics.operationId, attemptId)),
           notSupersededBy(operationId),
           this.ownership(),
+          sql`exists (
+            select 1 from ${tasks} as current_task
+            where current_task.id = ${taskId}
+              and current_task.current_topic_id = ${topicId}
+              and current_task.status not in ('completed', 'failed', 'canceled')
+          )`,
           sql`not exists (
             select 1
             from jsonb_array_elements(coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb)) as stale_fence
             where stale_fence->>'taskId' = ${taskId}
               and stale_fence->>'topicId' = ${topicId}
-              and stale_fence->>'operationId' = ${operationId}
+              and (stale_fence->>'operationId' = ${operationId}
+                or stale_fence->>'operationId' = ${attemptId})
           )`,
           sql`(
             ${taskTopics.verifyFinalizerClaim} is null

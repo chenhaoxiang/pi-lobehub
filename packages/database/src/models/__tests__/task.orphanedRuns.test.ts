@@ -257,6 +257,29 @@ describe('TaskRunClaimRepo', () => {
     expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(true);
   });
 
+  it('rejects a repair child when either the root or child attempt is stale-fenced', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const topicModel = new TaskTopicModel(serverDB, userId);
+    await serverDB
+      .update(taskTopics)
+      .set({
+        staleSettlementFences: [
+          {
+            attempt: 1,
+            operationId,
+            settledAt: new Date().toISOString(),
+            taskId,
+            topicId,
+          },
+        ],
+      })
+      .where(eq(taskTopics.topicId, topicId));
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-repair', operationId)).toBe(
+      false,
+    );
+  });
+
   it('flips a run that still names its own operation out of `running`', async () => {
     const { operationId, topicId } = await seed();
     const model = new TaskRunClaimRepo(serverDB, userId);
