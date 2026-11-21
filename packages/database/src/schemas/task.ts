@@ -266,6 +266,13 @@ export const taskTopics = pgTable(
       .$type<TaskRunStaleSettlementFence[]>()
       .notNull()
       .default([]),
+    /** Short-lived atomic claim held while Verify finalizes this Task attempt. */
+    verifyFinalizerClaim: jsonb('verify_finalizer_claim').$type<{
+      claimedAt: string;
+      operationId: string;
+      taskId: string;
+      topicId: string;
+    }>(),
     // 'running' | 'completed' | 'failed' | 'timeout' | 'canceled'
     status: text('status').notNull().default('running'),
 

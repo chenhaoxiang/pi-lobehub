@@ -15,14 +15,21 @@ import { driveTaskFromVerify, finalizeVerifyRun } from '../settle';
 import { attachTaskRunToAcceptance, resolveTaskAcceptance } from '../taskAcceptance';
 
 vi.mock('../goalReview', () => ({ reviewGoalDelivery: vi.fn() }));
-const { findByTopicId, hasStaleSettlementFence, isSupersededOperation } = vi.hoisted(() => ({
-  findByTopicId: vi.fn(),
-  hasStaleSettlementFence: vi.fn(),
-  isSupersededOperation: vi.fn(),
-}));
+const { claimVerifyFinalizer, findByTopicId, hasStaleSettlementFence, isSupersededOperation } =
+  vi.hoisted(() => ({
+    claimVerifyFinalizer: vi.fn(),
+    findByTopicId: vi.fn(),
+    hasStaleSettlementFence: vi.fn(),
+    isSupersededOperation: vi.fn(),
+  }));
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { findByTopicId, hasStaleSettlementFence, isSupersededOperation };
+    return {
+      claimVerifyFinalizer,
+      findByTopicId,
+      hasStaleSettlementFence,
+      isSupersededOperation,
+    };
   }),
 }));
 const { completeTaskForDelivery } = vi.hoisted(() => ({ completeTaskForDelivery: vi.fn() }));
@@ -540,6 +547,7 @@ describe('driveTaskFromVerify', () => {
     briefModelConstruct.mockImplementation(function () {
       return { create: briefCreate };
     });
+    claimVerifyFinalizer.mockReset().mockResolvedValue(true);
     findByTopicId.mockReset().mockImplementation(async (topicId: string) => ({
       taskId: 'task-1',
       topicId,
@@ -567,6 +575,22 @@ describe('driveTaskFromVerify', () => {
     expect(serviceUpdateStatus).not.toHaveBeenCalled();
     expect(deliverMock).not.toHaveBeenCalled();
     expect(scheduleGoalAdvance).not.toHaveBeenCalled();
+  });
+
+  it('stops before repair when ownership is lost after the initial preflight', async () => {
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+    claimVerifyFinalizer.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    await finalizeVerifyRun(db, 'u1', 'op-1', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
   });
 
   it('stale task finalization exits before repair, report, ancestor, or drive side effects', async () => {

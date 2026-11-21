@@ -450,6 +450,46 @@ export const driveTaskFromVerify = async (
  * report + task-drive in one place means the task-drive lives in exactly one
  * location regardless of which path completed the last check.
  */
+const ownsTaskFinalizerAttempt = async (
+  db: LobeChatDatabase,
+  userId: string,
+  operationId: string,
+  workspaceId?: string,
+): Promise<boolean> => {
+  const operationModel = new AgentOperationModel(db, userId, workspaceId);
+  const taskOperation = await resolveTaskOperation(operationModel, operationId);
+  if (!taskOperation?.taskId) return true;
+
+  const topicId = taskOperation.topicId;
+  if (!topicId) return false;
+  const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
+  const task = await new TaskModel(db, userId, workspaceId).findById(taskOperation.taskId);
+  const taskTopic = await taskTopicModel.findByTopicId(topicId);
+  const verifyRun = await new VerifyRunModel(db, userId, workspaceId).findByOperation(operationId);
+  const staleFence = await taskTopicModel.hasStaleSettlementFence(
+    taskOperation.taskId,
+    topicId,
+    operationId,
+  );
+  const staleRootFence =
+    taskOperation.id !== operationId &&
+    (await taskTopicModel.hasStaleSettlementFence(taskOperation.taskId, topicId, taskOperation.id));
+
+  const valid = Boolean(
+    task &&
+    task.currentTopicId === topicId &&
+    !TERMINAL_TASK_STATUS.has(task.status) &&
+    taskTopic?.taskId === taskOperation.taskId &&
+    taskTopic.topicId === topicId &&
+    !(await taskTopicModel.isSupersededOperation(topicId, operationId)) &&
+    verifyRun?.userDecision !== 'reject' &&
+    !staleFence &&
+    !staleRootFence,
+  );
+  if (!valid) return false;
+  return taskTopicModel.claimVerifyFinalizer(taskOperation.taskId, topicId, operationId);
+};
+
 export const finalizeVerifyRun = async (
   db: LobeChatDatabase,
   userId: string,
@@ -457,46 +497,14 @@ export const finalizeVerifyRun = async (
   opts: { report?: ReportContext },
   workspaceId?: string,
 ): Promise<void> => {
-  // This preflight must happen before repair/reporter work. A stale task-bound
+  // This preflight runs before every side-effect phase. A stale task-bound
   // finalizer must not spend a repair child, emit a report, recompute ancestors,
-  // or reach driveTaskFromVerify before the durable Task/Topic/Operation fence is
-  // known to belong to the current attempt. Non-task Verify runs retain their
-  // existing report/recompute path.
-  const operationModel = new AgentOperationModel(db, userId, workspaceId);
-  const taskOperation = await resolveTaskOperation(operationModel, operationId);
-  if (taskOperation?.taskId) {
-    const topicId = taskOperation.topicId;
-    const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
-    const task = await new TaskModel(db, userId, workspaceId).findById(taskOperation.taskId);
-    const taskTopic = topicId ? await taskTopicModel.findByTopicId(topicId) : null;
-    const verifyRun = await new VerifyRunModel(db, userId, workspaceId).findByOperation(
-      operationId,
-    );
-    const staleFence =
-      topicId &&
-      (await taskTopicModel.hasStaleSettlementFence(taskOperation.taskId, topicId, operationId));
-    const staleRootFence =
-      topicId &&
-      taskOperation.id !== operationId &&
-      (await taskTopicModel.hasStaleSettlementFence(
-        taskOperation.taskId,
-        topicId,
-        taskOperation.id,
-      ));
-    if (
-      !task ||
-      !topicId ||
-      task.currentTopicId !== topicId ||
-      TERMINAL_TASK_STATUS.has(task.status) ||
-      taskTopic?.taskId !== taskOperation.taskId ||
-      taskTopic.topicId !== topicId ||
-      (await taskTopicModel.isSupersededOperation(topicId, operationId)) ||
-      verifyRun?.userDecision === 'reject' ||
-      staleFence ||
-      staleRootFence
-    )
-      return;
-  }
+  // or reach driveTaskFromVerify. Non-task Verify runs retain their path.
+  if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
+
+  // Reclaim immediately before the repair phase: a stale claim may have won
+  // after the initial preflight while this finalizer was being scheduled.
+  if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
 
   // Repair-aware: no-ops until every required check is terminal, and may spawn a
   // repair (→ `repairing`), in which case finalize defers to the repair op.
@@ -505,6 +513,7 @@ export const finalizeVerifyRun = async (
   // and already recomputed this parent from repairing back to failed.
   if (repair) return;
 
+  if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
   const settled = await new VerifyRunModel(db, userId, workspaceId).findByOperation(operationId);
   if (settled?.status !== 'passed' && settled?.status !== 'failed' && settled?.status !== 'errored')
     return;
@@ -513,6 +522,7 @@ export const finalizeVerifyRun = async (
   // per repair round). Skipped when the caller lacks the deliverable (agent path)
   // and for `errored` runs, which carry no criteria judgment to report.
   if (opts.report && settled.status !== 'errored') {
+    if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
     await new VerifyReporterService(db, userId, workspaceId).generateReport({
       ...opts.report,
       verifyRunId: settled.id,
@@ -522,11 +532,13 @@ export const finalizeVerifyRun = async (
   // The repaired child is now the active/final round. Every failed ancestor may
   // have been stamped `repairing`, so collapse the complete bounded chain back
   // to the verdict derived from each round's own results.
+  if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
   await recomputeRepairAncestors(
     new AgentOperationModel(db, userId, workspaceId),
     new VerifyStatusService(db, userId, workspaceId),
     operationId,
   );
 
+  if (!(await ownsTaskFinalizerAttempt(db, userId, operationId, workspaceId))) return;
   await driveTaskFromVerify(db, userId, operationId, workspaceId);
 };

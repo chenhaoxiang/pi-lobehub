@@ -381,6 +381,12 @@ export class TaskTopicModel {
           eq(taskTopics.topicId, topicId),
           eq(taskTopics.operationId, operationId),
           eq(taskTopics.status, 'running'),
+          staleFence
+            ? sql`(
+                ${taskTopics.verifyFinalizerClaim} is null
+                or (${taskTopics.verifyFinalizerClaim}->>'claimedAt')::timestamptz < now() - interval '10 minutes'
+              )`
+            : undefined,
           this.ownership(),
         ),
       )
@@ -517,6 +523,43 @@ export class TaskTopicModel {
    * Whether this exact Task/Topic/Operation has a durable stale-settlement fence.
    * The fence survives a continuation replacing the topic's current operation.
    */
+  async claimVerifyFinalizer(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+  ): Promise<boolean> {
+    const claim = {
+      claimedAt: new Date().toISOString(),
+      operationId,
+      taskId,
+      topicId,
+    };
+    const rows = await this.db
+      .update(taskTopics)
+      .set({ verifyFinalizerClaim: claim })
+      .where(
+        and(
+          eq(taskTopics.taskId, taskId),
+          eq(taskTopics.topicId, topicId),
+          this.ownership(),
+          sql`not exists (
+            select 1
+            from jsonb_array_elements(coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb)) as stale_fence
+            where stale_fence->>'taskId' = ${taskId}
+              and stale_fence->>'topicId' = ${topicId}
+              and stale_fence->>'operationId' = ${operationId}
+          )`,
+          sql`(
+            ${taskTopics.verifyFinalizerClaim} is null
+            or ${taskTopics.verifyFinalizerClaim}->>'operationId' = ${operationId}
+            or (${taskTopics.verifyFinalizerClaim}->>'claimedAt')::timestamptz < now() - interval '10 minutes'
+          )`,
+        ),
+      )
+      .returning({ topicId: taskTopics.topicId });
+    return rows.length > 0;
+  }
+
   async hasStaleSettlementFence(
     taskId: string,
     topicId: string,
