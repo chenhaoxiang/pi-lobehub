@@ -7,6 +7,7 @@ import { TaskRunClaimRepo } from '../../repositories/taskRunClaim';
 import { agentOperations, tasks, taskTopics, topics, users } from '../../schemas';
 import type { LobeChatDatabase } from '../../type';
 import { TaskModel } from '../task';
+import { TaskTopicModel } from '../taskTopic';
 
 const serverDB: LobeChatDatabase = await getTestDB();
 
@@ -234,6 +235,21 @@ describe('TaskModel.findInterruptedRunningTopics', () => {
 });
 
 describe('TaskRunClaimRepo', () => {
+  it('claims only the current generation and transfers to its continuation', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const topicModel = new TaskTopicModel(serverDB, userId);
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, operationId)).toBe(true);
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new')).toBe(false);
+
+    await serverDB
+      .update(taskTopics)
+      .set({ operationId: 'op-new' })
+      .where(eq(taskTopics.topicId, topicId));
+
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new')).toBe(true);
+  });
+
   it('flips a run that still names its own operation out of `running`', async () => {
     const { operationId, topicId } = await seed();
     const model = new TaskRunClaimRepo(serverDB, userId);

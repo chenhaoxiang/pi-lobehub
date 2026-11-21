@@ -14,6 +14,7 @@ import journal from '../migrations/meta/_journal.json';
 
 const migrationsFolder = path.join(__dirname, '../migrations');
 const TAG = '0214_task_topic_stale_settlement_fences';
+const FINALIZER_TAG = '0215_task_topic_stale_settlement_fences';
 
 /**
  * The migration is intentionally replayed from the previous journal boundary:
@@ -86,8 +87,20 @@ describe('TaskTopic stale-settlement fence migration', () => {
         ]),
       ],
     );
+    await client.query(
+      `UPDATE task_topics
+       SET verify_finalizer_claim = $1::jsonb`,
+      [
+        JSON.stringify({
+          claimedAt: '2026-11-21T00:00:00.000Z',
+          operationId: 'op-fence',
+          taskId: 'task-topic-fence-task',
+          topicId: 'task-topic-fence-topic',
+        }),
+      ],
+    );
     const before = await client.query(`SELECT * FROM task_topics`);
-    const entry = journal.entries.find(({ tag }) => tag === TAG);
+    const entry = journal.entries.find(({ tag }) => tag === FINALIZER_TAG);
     const migration = readMigrationFiles({ migrationsFolder }).find(
       ({ folderMillis }) => folderMillis === entry?.when,
     );

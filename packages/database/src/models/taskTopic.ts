@@ -541,6 +541,8 @@ export class TaskTopicModel {
         and(
           eq(taskTopics.taskId, taskId),
           eq(taskTopics.topicId, topicId),
+          eq(taskTopics.operationId, operationId),
+          notSupersededBy(operationId),
           this.ownership(),
           sql`not exists (
             select 1
