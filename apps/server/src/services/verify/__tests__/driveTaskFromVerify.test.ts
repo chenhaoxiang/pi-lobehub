@@ -15,13 +15,14 @@ import { driveTaskFromVerify, finalizeVerifyRun } from '../settle';
 import { attachTaskRunToAcceptance, resolveTaskAcceptance } from '../taskAcceptance';
 
 vi.mock('../goalReview', () => ({ reviewGoalDelivery: vi.fn() }));
-const { hasStaleSettlementFence, isSupersededOperation } = vi.hoisted(() => ({
+const { findByTopicId, hasStaleSettlementFence, isSupersededOperation } = vi.hoisted(() => ({
+  findByTopicId: vi.fn(),
   hasStaleSettlementFence: vi.fn(),
   isSupersededOperation: vi.fn(),
 }));
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { hasStaleSettlementFence, isSupersededOperation };
+    return { findByTopicId, hasStaleSettlementFence, isSupersededOperation };
   }),
 }));
 const { completeTaskForDelivery } = vi.hoisted(() => ({ completeTaskForDelivery: vi.fn() }));
@@ -41,7 +42,7 @@ vi.mock('../repairService', () => ({
 }));
 vi.mock('../reporter', () => ({
   VerifyReporterService: vi.fn(function () {
-    return { generateReport: vi.fn() };
+    return { generateReport };
   }),
 }));
 
@@ -55,6 +56,7 @@ const {
   taskUpdateStatus,
   briefModelConstruct,
   briefCreate,
+  generateReport,
   serviceUpdateStatus,
   statusRecompute,
   deliverMock,
@@ -62,6 +64,7 @@ const {
   goalFindByTask: vi.fn(),
   briefCreate: vi.fn(),
   briefModelConstruct: vi.fn(),
+  generateReport: vi.fn(),
   deliverMock: vi.fn(),
   opFindById: vi.fn(),
   runFindByOperation: vi.fn(),
@@ -507,6 +510,8 @@ describe('driveTaskFromVerify', () => {
   });
 
   beforeEach(() => {
+    vi.mocked(maybeAutoRepair).mockReset().mockResolvedValue(undefined);
+    vi.mocked(repairRejectedReview).mockReset().mockResolvedValue(null);
     vi.mocked(reviewGoalDelivery).mockReset();
     vi.mocked(resolveTaskAcceptance).mockReset().mockResolvedValue(undefined);
     vi.mocked(attachTaskRunToAcceptance)
@@ -527,6 +532,7 @@ describe('driveTaskFromVerify', () => {
       serviceUpdateStatus,
       statusRecompute,
       deliverMock,
+      generateReport,
     ].forEach((m) => m.mockReset());
     // The drive is claimed before any side effect; unclaimed means "someone
     // else is driving this run", which every test here is not.
@@ -534,6 +540,10 @@ describe('driveTaskFromVerify', () => {
     briefModelConstruct.mockImplementation(function () {
       return { create: briefCreate };
     });
+    findByTopicId.mockReset().mockImplementation(async (topicId: string) => ({
+      taskId: 'task-1',
+      topicId,
+    }));
     hasStaleSettlementFence.mockReset().mockResolvedValue(false);
     isSupersededOperation.mockReset().mockResolvedValue(false);
     opFindById.mockResolvedValue({ taskId: 'task-1', topicId: 'topic-done' });
@@ -556,6 +566,23 @@ describe('driveTaskFromVerify', () => {
     expect(serviceUpdateStatus).not.toHaveBeenCalled();
     expect(deliverMock).not.toHaveBeenCalled();
     expect(scheduleGoalAdvance).not.toHaveBeenCalled();
+  });
+
+  it('stale task finalization exits before repair, report, ancestor, or drive side effects', async () => {
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+    vi.mocked(maybeAutoRepair).mockResolvedValue({ repairOperationId: 'repair-op' });
+
+    await finalizeVerifyRun(db, 'u1', 'op-1', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
   });
 
   it('passed → completes the task (with cascade), delivers the creator callback, marks done', async () => {

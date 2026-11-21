@@ -457,6 +457,28 @@ export const finalizeVerifyRun = async (
   opts: { report?: ReportContext },
   workspaceId?: string,
 ): Promise<void> => {
+  // This preflight must happen before repair/reporter work. A stale task-bound
+  // finalizer must not spend a repair child, emit a report, recompute ancestors,
+  // or reach driveTaskFromVerify before the durable Task/Topic/Operation fence is
+  // known to belong to the current attempt. Non-task Verify runs retain their
+  // existing report/recompute path.
+  const operationModel = new AgentOperationModel(db, userId, workspaceId);
+  const taskOperation = await resolveTaskOperation(operationModel, operationId);
+  if (taskOperation?.taskId) {
+    const topicId = taskOperation.topicId;
+    const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
+    const task = await new TaskModel(db, userId, workspaceId).findById(taskOperation.taskId);
+    const taskTopic = topicId ? await taskTopicModel.findByTopicId(topicId) : null;
+    if (
+      !task ||
+      !topicId ||
+      taskTopic?.taskId !== taskOperation.taskId ||
+      taskTopic.topicId !== topicId ||
+      (await taskTopicModel.hasStaleSettlementFence(taskOperation.taskId, topicId, operationId))
+    )
+      return;
+  }
+
   // Repair-aware: no-ops until every required check is terminal, and may spawn a
   // repair (→ `repairing`), in which case finalize defers to the repair op.
   const repair = await maybeAutoRepair(db, userId, operationId, workspaceId);
