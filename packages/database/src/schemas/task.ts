@@ -268,6 +268,7 @@ export const taskTopics = pgTable(
       .default([]),
     /** Short-lived atomic claim held while Verify finalizes this Task attempt. */
     verifyFinalizerClaim: jsonb('verify_finalizer_claim').$type<{
+      attemptId: string;
       claimedAt: string;
       operationId: string;
       taskId: string;

@@ -239,15 +239,22 @@ describe('TaskRunClaimRepo', () => {
     const { operationId, taskId, topicId } = await seed();
     const topicModel = new TaskTopicModel(serverDB, userId);
 
-    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, operationId)).toBe(true);
-    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new')).toBe(false);
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, operationId, operationId)).toBe(
+      true,
+    );
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(false);
+    // A repair child can keep the root operation on TaskTopic while claiming
+    // the same attempt; a continuation transfers the row to its new generation.
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-repair', operationId)).toBe(
+      true,
+    );
 
     await serverDB
       .update(taskTopics)
       .set({ operationId: 'op-new' })
       .where(eq(taskTopics.topicId, topicId));
 
-    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new')).toBe(true);
+    expect(await topicModel.claimVerifyFinalizer(taskId, topicId, 'op-new', 'op-new')).toBe(true);
   });
 
   it('flips a run that still names its own operation out of `running`', async () => {

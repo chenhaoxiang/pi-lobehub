@@ -4,7 +4,7 @@ import {
   TRANSIENT_FAILED_RUN_STATUS,
 } from '@lobechat/const/goal';
 import type { BriefDecision, TaskTopicHandoff } from '@lobechat/types';
-import { and, count, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { agentOperations } from '../schemas/agentOperations';
@@ -527,8 +527,10 @@ export class TaskTopicModel {
     taskId: string,
     topicId: string,
     operationId: string,
+    attemptId: string,
   ): Promise<boolean> {
     const claim = {
+      attemptId,
       claimedAt: new Date().toISOString(),
       operationId,
       taskId,
@@ -541,7 +543,7 @@ export class TaskTopicModel {
         and(
           eq(taskTopics.taskId, taskId),
           eq(taskTopics.topicId, topicId),
-          eq(taskTopics.operationId, operationId),
+          or(eq(taskTopics.operationId, operationId), eq(taskTopics.operationId, attemptId)),
           notSupersededBy(operationId),
           this.ownership(),
           sql`not exists (
@@ -553,7 +555,7 @@ export class TaskTopicModel {
           )`,
           sql`(
             ${taskTopics.verifyFinalizerClaim} is null
-            or ${taskTopics.verifyFinalizerClaim}->>'operationId' = ${operationId}
+            or ${taskTopics.verifyFinalizerClaim}->>'attemptId' = ${attemptId}
             or (${taskTopics.verifyFinalizerClaim}->>'claimedAt')::timestamptz < now() - interval '10 minutes'
           )`,
         ),

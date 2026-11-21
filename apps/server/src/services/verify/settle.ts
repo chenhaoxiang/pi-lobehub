@@ -487,7 +487,12 @@ const ownsTaskFinalizerAttempt = async (
     !staleRootFence,
   );
   if (!valid) return false;
-  return taskTopicModel.claimVerifyFinalizer(taskOperation.taskId, topicId, operationId);
+  return taskTopicModel.claimVerifyFinalizer(
+    taskOperation.taskId,
+    topicId,
+    operationId,
+    taskOperation.id,
+  );
 };
 
 export const finalizeVerifyRun = async (

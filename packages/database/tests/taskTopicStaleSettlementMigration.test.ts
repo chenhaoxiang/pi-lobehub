@@ -92,6 +92,7 @@ describe('TaskTopic stale-settlement fence migration', () => {
        SET verify_finalizer_claim = $1::jsonb`,
       [
         JSON.stringify({
+          attemptId: 'op-fence',
           claimedAt: '2026-11-21T00:00:00.000Z',
           operationId: 'op-fence',
           taskId: 'task-topic-fence-task',
