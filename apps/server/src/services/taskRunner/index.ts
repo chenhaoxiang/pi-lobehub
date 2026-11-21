@@ -36,6 +36,7 @@ import {
   resolveTaskRunExecution,
   resolveTopicExecutionPatch,
 } from './resolveRunExecution';
+import { clearBlockingRun } from './runConflict';
 
 const log = debug('task-runner');
 
@@ -250,20 +251,19 @@ export class TaskRunnerService {
             message: 'Continued topic does not belong to this task.',
           });
         }
-        if (target.status === 'running') {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: `Topic ${continueTopicId} is already running.`,
-          });
-        }
-      } else {
-        const runningTopic = existingTopics.find((t) => t.status === 'running');
-        if (runningTopic) {
-          throw new TRPCError({
-            code: 'CONFLICT',
-            message: `Task already has a running topic (${runningTopic.topicId}). Cancel it first or use --continue.`,
-          });
-        }
+      }
+
+      // A `running` row may be a leftover whose operation ended long ago; those
+      // are settled here, and a real concurrent run is refused with its state.
+      const blockingRuns = existingTopics.filter(
+        (t) => t.status === 'running' && (!continueTopicId || t.topicId === continueTopicId),
+      );
+      for (const row of blockingRuns) {
+        await clearBlockingRun(
+          { db: this.db, userId: this.userId, workspaceId: this.workspaceId },
+          row,
+          { continuing: !!continueTopicId },
+        );
       }
 
       // A running Task without its topic is still owned by the caller starting
