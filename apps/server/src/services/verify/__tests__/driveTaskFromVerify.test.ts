@@ -549,6 +549,7 @@ describe('driveTaskFromVerify', () => {
     opFindById.mockResolvedValue({ taskId: 'task-1', topicId: 'topic-done' });
     taskFindById.mockResolvedValue({
       assigneeAgentId: 'a1',
+      currentTopicId: 'topic-done',
       id: 'task-1',
       identifier: 'T-1',
       status: 'running',
@@ -574,6 +575,66 @@ describe('driveTaskFromVerify', () => {
     vi.mocked(maybeAutoRepair).mockResolvedValue({ repairOperationId: 'repair-op' });
 
     await finalizeVerifyRun(db, 'u1', 'op-1', {
+      report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+    });
+
+    expect(maybeAutoRepair).not.toHaveBeenCalled();
+    expect(generateReport).not.toHaveBeenCalled();
+    expect(statusRecompute).not.toHaveBeenCalled();
+    expect(runClaimTaskDrive).not.toHaveBeenCalled();
+    expect(serviceUpdateStatus).not.toHaveBeenCalled();
+    expect(deliverMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['old topic', { currentTopicId: 'topic-new' }, { userDecision: undefined }],
+    ['rejected round', { currentTopicId: 'topic-done' }, { userDecision: 'reject' }],
+    [
+      'terminal Task',
+      { currentTopicId: 'topic-done', status: 'completed' },
+      { userDecision: undefined },
+    ],
+  ])(
+    'finalizer skips task-bound %s before repair/report/ancestor/drive side effects',
+    async (_label, taskOverride, runOverride) => {
+      taskFindById.mockResolvedValue({
+        assigneeAgentId: 'a1',
+        currentTopicId: 'topic-done',
+        id: 'task-1',
+        identifier: 'T-1',
+        status: 'running',
+        ...taskOverride,
+      });
+      runFindByOperation.mockResolvedValue({
+        id: 'run-1',
+        metadata: null,
+        status: 'passed',
+        ...runOverride,
+      });
+
+      await finalizeVerifyRun(db, 'u1', 'op-1', {
+        report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
+      });
+
+      expect(maybeAutoRepair).not.toHaveBeenCalled();
+      expect(generateReport).not.toHaveBeenCalled();
+      expect(statusRecompute).not.toHaveBeenCalled();
+      expect(runClaimTaskDrive).not.toHaveBeenCalled();
+      expect(serviceUpdateStatus).not.toHaveBeenCalled();
+      expect(deliverMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('finalizer skips a repair child when its root attempt is stale-fenced', async () => {
+    opFindById.mockImplementation(async (id: string) =>
+      id === 'repair-op'
+        ? { id: 'repair-op', parentOperationId: 'root-op', taskId: null, topicId: 'topic-repair' }
+        : { id: 'root-op', parentOperationId: null, taskId: 'task-1', topicId: 'topic-done' },
+    );
+    hasStaleSettlementFence.mockResolvedValue(true);
+    runFindByOperation.mockResolvedValue({ id: 'run-1', metadata: null, status: 'passed' });
+
+    await finalizeVerifyRun(db, 'u1', 'repair-op', {
       report: { deliverable: 'x', goal: 'y', modelConfig: { model: 'm', provider: 'p' } },
     });
 
@@ -621,6 +682,13 @@ describe('driveTaskFromVerify', () => {
   });
 
   it('settles the owning task when the passing verify run belongs to a repair child', async () => {
+    taskFindById.mockResolvedValue({
+      assigneeAgentId: 'a1',
+      currentTopicId: 'topic-original',
+      id: 'task-1',
+      identifier: 'T-1',
+      status: 'running',
+    });
     runFindByOperation.mockResolvedValue({ id: 'repair-run', metadata: null, status: 'passed' });
     opFindById.mockImplementation(async (id: string) =>
       id === 'repair-op'
@@ -642,6 +710,13 @@ describe('driveTaskFromVerify', () => {
 
   it('collapses every ancestor round out of repairing when a multi-repair child settles', async () => {
     runFindByOperation.mockResolvedValue({ id: 'repair-run', metadata: null, status: 'passed' });
+    taskFindById.mockResolvedValue({
+      assigneeAgentId: 'a1',
+      currentTopicId: 'topic-original',
+      id: 'task-1',
+      identifier: 'T-1',
+      status: 'running',
+    });
     opFindById.mockImplementation(async (id: string) =>
       id === 'repair-op-2'
         ? { parentOperationId: 'repair-op-1', taskId: null, topicId: 'topic-repair' }

@@ -469,12 +469,31 @@ export const finalizeVerifyRun = async (
     const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
     const task = await new TaskModel(db, userId, workspaceId).findById(taskOperation.taskId);
     const taskTopic = topicId ? await taskTopicModel.findByTopicId(topicId) : null;
+    const verifyRun = await new VerifyRunModel(db, userId, workspaceId).findByOperation(
+      operationId,
+    );
+    const staleFence =
+      topicId &&
+      (await taskTopicModel.hasStaleSettlementFence(taskOperation.taskId, topicId, operationId));
+    const staleRootFence =
+      topicId &&
+      taskOperation.id !== operationId &&
+      (await taskTopicModel.hasStaleSettlementFence(
+        taskOperation.taskId,
+        topicId,
+        taskOperation.id,
+      ));
     if (
       !task ||
       !topicId ||
+      task.currentTopicId !== topicId ||
+      TERMINAL_TASK_STATUS.has(task.status) ||
       taskTopic?.taskId !== taskOperation.taskId ||
       taskTopic.topicId !== topicId ||
-      (await taskTopicModel.hasStaleSettlementFence(taskOperation.taskId, topicId, operationId))
+      (await taskTopicModel.isSupersededOperation(topicId, operationId)) ||
+      verifyRun?.userDecision === 'reject' ||
+      staleFence ||
+      staleRootFence
     )
       return;
   }
