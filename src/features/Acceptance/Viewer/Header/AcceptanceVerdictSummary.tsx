@@ -1,87 +1,79 @@
 'use client';
 
-import { createStaticStyles, cssVar, Flexbox, Icon, Text } from '@lobehub/ui';
+import { Flexbox } from '@lobehub/ui';
+import { cssVar } from '@lobehub/ui/stylex/cssVar.stylex';
+import * as stylex from '@stylexjs/stylex';
 import { useTranslation } from 'react-i18next';
-
-import type { AcceptanceBundle } from '@/services/verify';
 
 import {
   type AcceptanceVerdictCounts,
   formatAcceptanceCountsText,
+  formatAcceptanceDecisionTimeText,
   formatAcceptanceTimeText,
-  resolveAcceptanceVerdictMeta,
-  resolveAcceptanceVerdictState,
 } from '../verdict';
 
-const styles = createStaticStyles(({ css }) => ({
-  summary: css`
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
-    min-height: 24px;
-    color: ${cssVar.colorTextSecondary};
-    font-size: 12px;
-  `,
-  status: css`
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-weight: 500;
-  `,
-  detail: css`
-    color: ${cssVar.colorTextSecondary};
-  `,
-  separator: css`
-    color: ${cssVar.colorTextQuaternary};
-  `,
-}));
+const styles = stylex.create({
+  summary: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    rowGap: '8px',
+    columnGap: '12px',
+    minHeight: '24px',
+    color: cssVar.colorTextSecondary,
+    fontSize: '12px',
+  },
+  detail: {
+    color: cssVar.colorTextSecondary,
+  },
+  separator: {
+    color: cssVar.colorTextQuaternary,
+  },
+});
 
 interface AcceptanceVerdictSummaryProps {
-  acceptance?: Pick<AcceptanceBundle['acceptance'], 'completedAt' | 'status'>;
   counts?: AcceptanceVerdictCounts;
-  lastRunAt?: Date | string | null;
+  decisionAt?: Date | string | null;
+  lastVerifiedAt?: Date | string | null;
 }
 
 /**
  * A read-only header summary. Counts and timestamps provide context for the
- * checklist; neither is presented as a gate or as a person's sign-off.
+ * checklist; the acceptance status itself remains in AcceptanceStatusControl.
  */
 export const AcceptanceVerdictSummary = ({
-  acceptance,
   counts,
-  lastRunAt,
+  decisionAt,
+  lastVerifiedAt,
 }: AcceptanceVerdictSummaryProps) => {
   const { t } = useTranslation('verify');
-  const status = acceptance?.status;
-  const verdictState = resolveAcceptanceVerdictState(status);
-  const verdictMeta = resolveAcceptanceVerdictMeta(status ?? '', t);
   const countsText = counts ? formatAcceptanceCountsText(t, counts) : undefined;
-  const timeText = formatAcceptanceTimeText(t, acceptance?.completedAt ?? lastRunAt);
+  const verifiedText = formatAcceptanceTimeText(t, lastVerifiedAt);
+  const decisionText = formatAcceptanceDecisionTimeText(t, decisionAt);
+  if (!countsText && !verifiedText && !decisionText) return null;
 
   return (
-    <Flexbox className={styles.summary} role={'status'}>
-      <span className={styles.status} data-verdict-state={verdictState}>
-        <Icon icon={verdictMeta.icon} size={14} spin={verdictMeta.spin} />
-        <Text>{verdictMeta.label}</Text>
-      </span>
-      {countsText && (
-        <>
-          <span aria-hidden={'true'} className={styles.separator}>
-            ·
-          </span>
-          <span className={styles.detail}>{countsText}</span>
-        </>
+    <Flexbox {...stylex.props(styles.summary)}>
+      {countsText && <span {...stylex.props(styles.detail)}>{countsText}</span>}
+      {countsText && verifiedText && (
+        <span aria-hidden={'true'} {...stylex.props(styles.separator)}>
+          ·
+        </span>
       )}
-      {timeText && (
-        <>
-          <span aria-hidden={'true'} className={styles.separator}>
-            ·
-          </span>
-          <time className={styles.detail} dateTime={String(acceptance?.completedAt ?? lastRunAt)}>
-            {timeText}
-          </time>
-        </>
+      {verifiedText && (
+        <time dateTime={String(lastVerifiedAt)} {...stylex.props(styles.detail)}>
+          {verifiedText}
+        </time>
+      )}
+      {verifiedText && decisionText && (
+        <span aria-hidden={'true'} {...stylex.props(styles.separator)}>
+          ·
+        </span>
+      )}
+      {decisionText && (
+        <time dateTime={String(decisionAt)} {...stylex.props(styles.detail)}>
+          {decisionText}
+        </time>
       )}
     </Flexbox>
   );

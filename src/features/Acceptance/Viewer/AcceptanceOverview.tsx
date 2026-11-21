@@ -28,6 +28,10 @@ import type { AcceptanceTabKey } from './Header/AcceptanceTabs';
 import AcceptanceTabs from './Header/AcceptanceTabs';
 import { AcceptanceVerdictSummary } from './Header/AcceptanceVerdictSummary';
 import {
+  resolveAcceptanceDecisionTime,
+  resolveAcceptanceLastVerifiedAt,
+} from './verdict';
+import {
   acceptanceContentLayout,
   acceptanceReadingColumnMaxWidth,
   getAcceptanceBodyMaxWidth,
@@ -102,6 +106,11 @@ export const AcceptanceOverview = ({
         { failed: 0, notExecuted: 0, passed: 0, uncertain: 0 },
       )
     : undefined;
+  const lastVerifiedAt = resolveAcceptanceLastVerifiedAt(rounds);
+  const decisionAt = resolveAcceptanceDecisionTime(
+    data?.acceptance.status,
+    data?.acceptance.completedAt,
+  );
   const resourceCount = new Set(
     checks.flatMap((check) =>
       (check.evidence ?? [])
@@ -139,9 +148,9 @@ export const AcceptanceOverview = ({
             <AcceptanceShare />
           </Flexbox>
           <AcceptanceVerdictSummary
-            acceptance={data?.acceptance}
             counts={verdictCounts}
-            lastRunAt={rounds.at(-1)?.run.createdAt}
+            decisionAt={decisionAt}
+            lastVerifiedAt={lastVerifiedAt}
           />
           {!gateDossier && <AcceptanceGoal editSlot={<AcceptanceGoalEdit />} />}
           {/* About the delivery as a whole, not one tab's face of it — a reviewer

@@ -634,6 +634,7 @@ export default {
   'acceptance.tray.goalModal.setTitle': 'Set the goal',
   'acceptance.surface.other': 'Other',
   'acceptance.titleFallback': 'Acceptance',
+  'acceptance.verdict.decidedAt': 'Decision made {{time}}',
   'acceptance.verdict.inProgress': 'Acceptance in progress',
   'acceptance.verdict.lastVerified': 'Last verified {{time}}',
   'acceptance.verdict.neutral': 'Acceptance status unavailable',

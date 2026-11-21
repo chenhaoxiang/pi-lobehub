@@ -500,6 +500,7 @@
   "acceptance.tray.goalModal.placeholder": "e.g. a clear 300-word intro to RAG a beginner can follow",
   "acceptance.tray.goalModal.save": "Save goal",
   "acceptance.tray.goalModal.setTitle": "Set the goal",
+  "acceptance.verdict.decidedAt": "Decision made {{time}}",
   "acceptance.verdict.inProgress": "Acceptance in progress",
   "acceptance.verdict.lastVerified": "Last verified {{time}}",
   "acceptance.verdict.neutral": "Acceptance status unavailable",

@@ -12,6 +12,15 @@ import {
 } from 'lucide-react';
 
 export const LIVE_ACCEPTANCE_STATUSES = new Set(['pending', 'planned', 'verifying', 'repairing']);
+const SETTLED_VERIFY_RUN_STATUSES = new Set(['delivered', 'errored', 'failed', 'passed']);
+const DECIDED_ACCEPTANCE_STATUSES = new Set(['accepted', 'closed', 'rejected']);
+
+type AcceptanceRoundLike = {
+  run: {
+    completedAt?: Date | string | null;
+    status?: string | null;
+  };
+};
 
 export type AcceptanceVerdictState =
   'accepted' | 'closed' | 'errored' | 'neutral' | 'rejected' | 'waiting';
@@ -27,7 +36,7 @@ export const resolveAcceptanceVerdictState = (
   if (status === 'closed') return 'closed';
   if (status === 'rejected') return 'rejected';
   if (status === 'errored') return 'errored';
-  if (status && LIVE_ACCEPTANCE_STATUSES.has(status)) return 'waiting';
+  if (status === 'delivered' || (status && LIVE_ACCEPTANCE_STATUSES.has(status))) return 'waiting';
   return 'neutral';
 };
 
@@ -66,6 +75,14 @@ export const resolveAcceptanceVerdictMeta = (
       icon: Loader2,
       label: t(`acceptance.status.${status}`),
       spin: true,
+    };
+  }
+  if (status === 'delivered') {
+    return {
+      bg: cssVar.colorInfoBg,
+      color: cssVar.colorInfo,
+      icon: CircleDashed,
+      label: t('acceptance.status.delivered'),
     };
   }
   if (status === 'accepted') {
@@ -108,6 +125,19 @@ export const resolveAcceptanceVerdictMeta = (
   };
 };
 
+export const resolveAcceptanceLastVerifiedAt = (rounds: readonly AcceptanceRoundLike[]) =>
+  [...rounds]
+    .reverse()
+    .find(
+      ({ run }) =>
+        run.completedAt && run.status && SETTLED_VERIFY_RUN_STATUSES.has(run.status),
+    )?.run.completedAt;
+
+export const resolveAcceptanceDecisionTime = (
+  status: string | null | undefined,
+  completedAt: Date | string | null | undefined,
+) => (status && DECIDED_ACCEPTANCE_STATUSES.has(status) ? completedAt : undefined);
+
 export const formatAcceptanceCountsText = (
   t: TFunction<'verify'>,
   counts: AcceptanceVerdictCounts,
@@ -123,13 +153,22 @@ export const formatAcceptanceCountsText = (
     .filter(Boolean)
     .join(' · ');
 
-export const formatAcceptanceTimeText = (
+const formatAcceptanceDateText = (
   t: TFunction<'verify'>,
+  key: 'acceptance.verdict.decidedAt' | 'acceptance.verdict.lastVerified',
   time: Date | string | null | undefined,
 ) => {
   if (!time) return undefined;
   const date = dayjs(time);
-  return date.isValid()
-    ? t('acceptance.verdict.lastVerified', { time: date.format('YYYY-MM-DD HH:mm') })
-    : undefined;
+  return date.isValid() ? t(key, { time: date.format('YYYY-MM-DD HH:mm') }) : undefined;
 };
+
+export const formatAcceptanceTimeText = (
+  t: TFunction<'verify'>,
+  time: Date | string | null | undefined,
+) => formatAcceptanceDateText(t, 'acceptance.verdict.lastVerified', time);
+
+export const formatAcceptanceDecisionTimeText = (
+  t: TFunction<'verify'>,
+  time: Date | string | null | undefined,
+) => formatAcceptanceDateText(t, 'acceptance.verdict.decidedAt', time);
