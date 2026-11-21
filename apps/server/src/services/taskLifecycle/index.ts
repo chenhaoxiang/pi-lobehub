@@ -147,6 +147,23 @@ export class TaskLifecycleService {
 
     log('onTopicComplete: task=%s topic=%s reason=%s', taskIdentifier, topicId, reason);
 
+    // TaskRunner may have explicitly retired this old operation as stale before
+    // a replacement was bound. This fence is durable on the TaskTopic row and
+    // must be checked before any terminal write, handoff, or creator bridge.
+    if (
+      topicId &&
+      (await this.taskTopicModel.hasStaleSettlementFence(taskId, topicId, params.operationId))
+    ) {
+      log(
+        'onTopicComplete: op=%s task=%s topic=%s was stale-settled — ignoring %s',
+        params.operationId,
+        taskId,
+        topicId,
+        reason,
+      );
+      return;
+    }
+
     // A run a follow-up in the same conversation superseded no longer owns the
     // Task: the follow-up took its run row over and settles it when it ends. A
     // late report from the old run (its success arriving after the interrupt,

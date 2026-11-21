@@ -13,6 +13,7 @@ const {
   findOrphanedRunningTopics,
   findRunByTopicId,
   findRunningByTaskIds,
+  hasStaleSettlementFence,
   findTaskById,
   claimRun,
   onTopicComplete,
@@ -21,6 +22,7 @@ const {
   findOrphanedRunningTopics: vi.fn(),
   findRunByTopicId: vi.fn(),
   findRunningByTaskIds: vi.fn(),
+  hasStaleSettlementFence: vi.fn(),
   findTaskById: vi.fn(),
   claimRun: vi.fn(),
   onTopicComplete: vi.fn(),
@@ -40,7 +42,11 @@ vi.mock('@/database/models/task', () => ({
 
 vi.mock('@/database/models/taskTopic', () => ({
   TaskTopicModel: vi.fn(function () {
-    return { findByTopicId: findRunByTopicId, findRunningByTaskIds };
+    return {
+      findByTopicId: findRunByTopicId,
+      findRunningByTaskIds,
+      hasStaleSettlementFence,
+    };
   }),
 }));
 
@@ -245,8 +251,27 @@ describe('isRunAlreadySettled', () => {
     onTopicComplete.mockReset().mockResolvedValue(undefined);
     findRunByTopicId.mockReset();
     findRunningByTaskIds.mockReset().mockResolvedValue([]);
+    hasStaleSettlementFence.mockReset().mockResolvedValue(false);
     findTaskById.mockReset();
   });
+
+  it.each(['done', 'interrupted', 'error'])(
+    'fences a stale-settled %s callback even while the replacement is not bound',
+    async (reason) => {
+      hasStaleSettlementFence.mockResolvedValue(true);
+
+      expect(
+        await isRunAlreadySettled(db, 'user-1', undefined, {
+          operationId: 'op-stale',
+          reason,
+          taskId: 'task-1',
+          topicId: 'tpc-1',
+        }),
+      ).toBe(true);
+      expect(findRunByTopicId).not.toHaveBeenCalled();
+      expect(findTaskById).not.toHaveBeenCalled();
+    },
+  );
 
   it('fences a delayed failure callback that lands after the sweep settled the run', async () => {
     // Regression: the sweep's claim only excluded competing sweeps. A QStash

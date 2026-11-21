@@ -262,7 +262,7 @@ export class TaskRunnerService {
         await clearBlockingRun(
           { db: this.db, userId: this.userId, workspaceId: this.workspaceId },
           row,
-          { continuing: !!continueTopicId },
+          { continueTopicId, continuing: !!continueTopicId },
         );
       }
 

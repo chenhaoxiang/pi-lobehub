@@ -1,0 +1,1 @@
+ALTER TABLE "task_topics" ADD COLUMN "stale_settlement_fences" jsonb DEFAULT '[]'::jsonb NOT NULL;

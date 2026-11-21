@@ -8,7 +8,7 @@ import { and, count, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { agentOperations } from '../schemas/agentOperations';
-import type { TaskTopicItem } from '../schemas/task';
+import type { TaskRunStaleSettlementFence, TaskTopicItem } from '../schemas/task';
 import { tasks, taskTopics } from '../schemas/task';
 import { topics } from '../schemas/topic';
 import type { LobeChatDatabase } from '../type';
@@ -313,10 +313,31 @@ export class TaskTopicModel {
    * topic's end stamp is the caller's to commit alongside it — see
    * `TaskRunClaimRepo`.
    */
-  async claimRunIfRunning(topicId: string, operationId: string, status: string): Promise<boolean> {
+  async claimRunIfRunning(
+    topicId: string,
+    operationId: string,
+    status: string,
+    staleFence?: Omit<TaskRunStaleSettlementFence, 'settledAt'> & { settledAt?: Date },
+  ): Promise<boolean> {
+    const fenceValue = staleFence
+      ? {
+          attempt: staleFence.attempt,
+          operationId: staleFence.operationId,
+          settledAt: (staleFence.settledAt ?? new Date()).toISOString(),
+          taskId: staleFence.taskId,
+          topicId: staleFence.topicId,
+        }
+      : undefined;
     const result = await this.db
       .update(taskTopics)
-      .set({ status })
+      .set({
+        ...(fenceValue
+          ? {
+              staleSettlementFences: sql`coalesce(${taskTopics.staleSettlementFences}, '[]'::jsonb) || ${JSON.stringify([fenceValue])}::jsonb`,
+            }
+          : {}),
+        status,
+      })
       .where(
         and(
           eq(taskTopics.topicId, topicId),
@@ -454,7 +475,27 @@ export class TaskTopicModel {
     return !!row;
   }
 
-  /** Undo {@link markTopicEnded}'s end stamp for a run that is live again. */
+  /**
+   * Whether this exact Task/Topic/Operation has a durable stale-settlement fence.
+   * The fence survives a continuation replacing the topic's current operation.
+   */
+  async hasStaleSettlementFence(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+  ): Promise<boolean> {
+    const [row] = await this.db
+      .select({ fences: taskTopics.staleSettlementFences })
+      .from(taskTopics)
+      .where(and(eq(taskTopics.taskId, taskId), eq(taskTopics.topicId, topicId), this.ownership()))
+      .limit(1);
+
+    return (row?.fences ?? []).some(
+      (fence) =>
+        fence.taskId === taskId && fence.topicId === topicId && fence.operationId === operationId,
+    );
+  }
+
   async clearTopicEnded(topicId: string): Promise<void> {
     await this.db
       .update(topics)

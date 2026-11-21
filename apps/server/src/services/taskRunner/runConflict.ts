@@ -18,6 +18,8 @@ const log = debug('task-runner:run-conflict');
 /** The run-row fields this check reads. */
 interface BlockingRunRow {
   operationId: string | null;
+  seq: number;
+  taskId: string;
   topicId: string | null;
 }
 
@@ -62,6 +64,12 @@ const inspectBlockingRun = async (
   const operationModel = new AgentOperationModel(ctx.db, ctx.userId, ctx.workspaceId);
   const operation = await operationModel.findById(row.operationId);
   if (!operation) return { kind: 'unknown' };
+
+  // The operation lookup is scoped by the caller, but the stale row still has
+  // to name the same Task and Topic. Never retire a row based on an operation
+  // borrowed from another task/topic, even if its id is present.
+  if (operation.taskId !== row.taskId || operation.topicId !== row.topicId)
+    return { kind: 'unknown' };
 
   if (isAgentOperationInFlight(operation.status)) {
     return {
@@ -152,18 +160,28 @@ const conflictMessage = (topicId: string, continuing: boolean, run: BlockingRun)
 export const clearBlockingRun = async (
   ctx: RunConflictContext,
   row: BlockingRunRow,
-  options: { continuing: boolean; now?: number },
+  options: { continueTopicId?: string; continuing: boolean; now?: number },
 ): Promise<void> => {
   const topicId = row.topicId ?? 'unknown';
   const now = options.now ?? Date.now();
-  const run = await inspectBlockingRun(ctx, row, now);
+  const run =
+    (options.continueTopicId !== undefined && options.continueTopicId !== row.topicId) ||
+    !row.topicId
+      ? ({ kind: 'unknown' } as const)
+      : await inspectBlockingRun(ctx, row, now);
 
   if (run.kind === 'stale') {
     const status = settledRunStatus(run.operation);
-    const claimed = await new TaskRunClaimRepo(ctx.db, ctx.userId, ctx.workspaceId).claim(
+    const claimed = await new TaskRunClaimRepo(ctx.db, ctx.userId, ctx.workspaceId).claimStale(
       topicId,
       run.operation.id,
       status,
+      {
+        attempt: row.seq,
+        operationId: run.operation.id,
+        taskId: row.taskId,
+        topicId,
+      },
     );
     if (claimed) {
       log(

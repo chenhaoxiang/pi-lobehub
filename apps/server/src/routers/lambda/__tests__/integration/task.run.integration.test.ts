@@ -122,6 +122,7 @@ describe('Task Router run', () => {
           completedAt: operation.completedAt ?? null,
           id: operationId,
           status: operation.status,
+          taskId: task.data.id,
           topicId,
           updatedAt: operation.updatedAt,
           userId,

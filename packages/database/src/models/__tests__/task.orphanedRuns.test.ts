@@ -245,6 +245,25 @@ describe('TaskRunClaimRepo', () => {
     expect((await readTopic(topicId)).completedAt).toBeInstanceOf(Date);
   });
 
+  it('persists a stale-settlement fence with the exact attempt identity', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const model = new TaskRunClaimRepo(serverDB, userId);
+
+    expect(
+      await model.claimStale(topicId, operationId, 'completed', {
+        attempt: 1,
+        operationId,
+        taskId,
+        topicId,
+      }),
+    ).toBe(true);
+
+    const run = await readRun(topicId);
+    expect(run.staleSettlementFences).toEqual([
+      expect.objectContaining({ attempt: 1, operationId, taskId, topicId }),
+    ]);
+  });
+
   it('leaves the run `running` when the topic end stamp fails', async () => {
     // Regression: the claim committed before the topic stamp, so a failed stamp
     // threw past the caller's rollback and left the run terminal while its Task

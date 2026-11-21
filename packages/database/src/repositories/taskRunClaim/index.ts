@@ -1,4 +1,5 @@
 import { TaskTopicModel, TERMINAL_TOPIC_STATUSES } from '../../models/taskTopic';
+import type { TaskRunStaleSettlementFence } from '../../schemas/task';
 import type { LobeChatDatabase } from '../../type';
 
 /**
@@ -29,6 +30,23 @@ export class TaskRunClaimRepo {
     this.db.transaction(async (tx) => {
       const model = this.model(tx as LobeChatDatabase);
       if (!(await model.claimRunIfRunning(topicId, operationId, status))) return false;
+      if (TERMINAL_TOPIC_STATUSES.has(status)) await model.markTopicEnded(topicId, status);
+      return true;
+    });
+
+  /**
+   * Retire a stale run and persist the exact old attempt as a late-delivery
+   * fence. This is intentionally separate from ordinary terminal completion.
+   */
+  claimStale = async (
+    topicId: string,
+    operationId: string,
+    status: string,
+    fence: Omit<TaskRunStaleSettlementFence, 'settledAt'> & { settledAt?: Date },
+  ): Promise<boolean> =>
+    this.db.transaction(async (tx) => {
+      const model = this.model(tx as LobeChatDatabase);
+      if (!(await model.claimRunIfRunning(topicId, operationId, status, fence))) return false;
       if (TERMINAL_TOPIC_STATUSES.has(status)) await model.markTopicEnded(topicId, status);
       return true;
     });

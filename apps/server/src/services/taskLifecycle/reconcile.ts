@@ -261,6 +261,8 @@ export const isRunAlreadySettled = async (
   if (!topicId) return false;
 
   const taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
+  if (await taskTopicModel.hasStaleSettlementFence(taskId, topicId, operationId)) return true;
+
   const run = await taskTopicModel.findByTopicId(topicId);
   if (!run || run.taskId !== taskId || run.operationId !== operationId) return false;
   if (run.status === 'running') return false;

@@ -6,7 +6,7 @@ import { ORPHANED_RUN_GRACE_MS } from '@/server/services/taskLifecycle/reconcile
 import { clearBlockingRun } from './runConflict';
 
 const mocks = vi.hoisted(() => ({
-  claim: vi.fn(),
+  claimStale: vi.fn(),
   findById: vi.fn(),
   findByTopicId: vi.fn(),
   findLiveByTopic: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('@/database/models/taskTopic', () => ({
 }));
 vi.mock('@/database/repositories/taskRunClaim', () => ({
   TaskRunClaimRepo: vi.fn().mockImplementation(function () {
-    return { claim: mocks.claim };
+    return { claimStale: mocks.claimStale };
   }),
 }));
 vi.mock('@/server/services/taskLifecycle', () => ({ TaskLifecycleService: vi.fn() }));
@@ -38,6 +38,7 @@ const ctx = { db: {} as any, userId: 'user-1', workspaceId: 'ws-1' };
 const row = (overrides: Record<string, unknown> = {}) =>
   ({
     operationId: 'op_old',
+    seq: 3,
     status: 'running',
     taskId: 'task-1',
     topicId: 'tpc_stale',
@@ -50,6 +51,8 @@ const operation = (overrides: Record<string, unknown> = {}) => ({
   error: null,
   id: 'op_old',
   status: 'done',
+  taskId: 'task-1',
+  topicId: 'tpc_stale',
   updatedAt: LONG_AGO,
   ...overrides,
 });
@@ -58,7 +61,7 @@ describe('clearBlockingRun', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.findLiveByTopic.mockResolvedValue([]);
-    mocks.claim.mockResolvedValue(true);
+    mocks.claimStale.mockResolvedValue(true);
   });
 
   describe('leftover runs', () => {
@@ -69,7 +72,12 @@ describe('clearBlockingRun', () => {
         clearBlockingRun(ctx, row(), { continuing: false, now: NOW }),
       ).resolves.toBeUndefined();
 
-      expect(mocks.claim).toHaveBeenCalledWith('tpc_stale', 'op_old', 'completed');
+      expect(mocks.claimStale).toHaveBeenCalledWith(
+        'tpc_stale',
+        'op_old',
+        'completed',
+        expect.objectContaining({ attempt: 3, taskId: 'task-1', topicId: 'tpc_stale' }),
+      );
     });
 
     it('settles an interrupted run the way a Stop would', async () => {
@@ -79,7 +87,12 @@ describe('clearBlockingRun', () => {
 
       await clearBlockingRun(ctx, row(), { continuing: true, now: NOW });
 
-      expect(mocks.claim).toHaveBeenCalledWith('tpc_stale', 'op_old', 'canceled');
+      expect(mocks.claimStale).toHaveBeenCalledWith(
+        'tpc_stale',
+        'op_old',
+        'canceled',
+        expect.objectContaining({ attempt: 3 }),
+      );
     });
 
     it('settles an abandoned run with no recorded error as failed, like the sweep', async () => {
@@ -89,7 +102,12 @@ describe('clearBlockingRun', () => {
 
       await clearBlockingRun(ctx, row(), { continuing: false, now: NOW });
 
-      expect(mocks.claim).toHaveBeenCalledWith('tpc_stale', 'op_old', 'failed');
+      expect(mocks.claimStale).toHaveBeenCalledWith(
+        'tpc_stale',
+        'op_old',
+        'failed',
+        expect.objectContaining({ attempt: 3 }),
+      );
     });
 
     it('keeps a transient provider failure retryable', async () => {
@@ -103,7 +121,12 @@ describe('clearBlockingRun', () => {
 
       await clearBlockingRun(ctx, row(), { continuing: false, now: NOW });
 
-      expect(mocks.claim).toHaveBeenCalledWith('tpc_stale', 'op_old', TRANSIENT_FAILED_RUN_STATUS);
+      expect(mocks.claimStale).toHaveBeenCalledWith(
+        'tpc_stale',
+        'op_old',
+        TRANSIENT_FAILED_RUN_STATUS,
+        expect.objectContaining({ attempt: 3 }),
+      );
     });
 
     it('settles a run that recorded a plain failure as failed', async () => {
@@ -117,12 +140,17 @@ describe('clearBlockingRun', () => {
 
       await clearBlockingRun(ctx, row(), { continuing: false, now: NOW });
 
-      expect(mocks.claim).toHaveBeenCalledWith('tpc_stale', 'op_old', 'failed');
+      expect(mocks.claimStale).toHaveBeenCalledWith(
+        'tpc_stale',
+        'op_old',
+        'failed',
+        expect.objectContaining({ attempt: 3 }),
+      );
     });
 
     it('goes ahead when another writer settled the row first', async () => {
       mocks.findById.mockResolvedValue(operation());
-      mocks.claim.mockResolvedValue(false);
+      mocks.claimStale.mockResolvedValue(false);
       mocks.findByTopicId.mockResolvedValue(row({ status: 'completed' }));
 
       await expect(
@@ -136,7 +164,7 @@ describe('clearBlockingRun', () => {
         .mockResolvedValueOnce(
           operation({ completedAt: null, id: 'op_new', status: 'running', updatedAt: JUST_NOW }),
         );
-      mocks.claim.mockResolvedValue(false);
+      mocks.claimStale.mockResolvedValue(false);
       mocks.findByTopicId.mockResolvedValue(row({ operationId: 'op_new' }));
 
       await expect(
@@ -162,7 +190,7 @@ describe('clearBlockingRun', () => {
       expect(error.message).toBe(
         `Task already has a running topic (tpc_stale): operation op_old is waiting_for_client (last update ${JUST_NOW.toISOString()}). Wait for it to finish, or stop it first with \`lh task topic cancel tpc_stale\` (this pauses the task; resume it afterwards).`,
       );
-      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.claimStale).not.toHaveBeenCalled();
     });
 
     it('treats a topic with another operation in flight as live', async () => {
@@ -179,7 +207,7 @@ describe('clearBlockingRun', () => {
           /^Topic tpc_stale is already running: operation op_followup is running/,
         ),
       });
-      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.claimStale).not.toHaveBeenCalled();
     });
 
     it('does not settle a Pi run waiting for human input', async () => {
@@ -193,7 +221,7 @@ describe('clearBlockingRun', () => {
         code: 'CONFLICT',
         message: expect.stringContaining('operation op_old is waiting_for_human'),
       });
-      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.claimStale).not.toHaveBeenCalled();
     });
 
     it('leaves a run that just ended to its own completion hook', async () => {
@@ -210,7 +238,44 @@ describe('clearBlockingRun', () => {
       expect(error.message).toContain(
         `Retry after ${new Date(JUST_NOW.getTime() + ORPHANED_RUN_GRACE_MS).toISOString()}`,
       );
-      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.claimStale).not.toHaveBeenCalled();
+    });
+
+    it('rejects an operation belonging to another Task without claiming the row', async () => {
+      mocks.findById.mockResolvedValue(operation({ taskId: 'task-other' }));
+
+      await expect(
+        clearBlockingRun(ctx, row(), { continuing: false, now: NOW }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        message: expect.stringContaining('no operation can be found for it'),
+      });
+      expect(mocks.claimStale).not.toHaveBeenCalled();
+    });
+
+    it('rejects an operation belonging to another Topic without claiming the row', async () => {
+      mocks.findById.mockResolvedValue(operation({ topicId: 'topic-other' }));
+
+      await expect(
+        clearBlockingRun(ctx, row(), { continuing: false, now: NOW }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        message: expect.stringContaining('no operation can be found for it'),
+      });
+      expect(mocks.claimStale).not.toHaveBeenCalled();
+    });
+
+    it('rejects a continue request whose topic does not match the blocking row', async () => {
+      mocks.findById.mockResolvedValue(operation());
+
+      await expect(
+        clearBlockingRun(ctx, row(), {
+          continueTopicId: 'topic-other',
+          continuing: true,
+          now: NOW,
+        }),
+      ).rejects.toMatchObject({ code: 'CONFLICT' });
+      expect(mocks.claimStale).not.toHaveBeenCalled();
     });
 
     it('does not guess when the operation cannot be found', async () => {
@@ -222,7 +287,7 @@ describe('clearBlockingRun', () => {
         code: 'CONFLICT',
         message: expect.stringContaining('no operation can be found for it'),
       });
-      expect(mocks.claim).not.toHaveBeenCalled();
+      expect(mocks.claimStale).not.toHaveBeenCalled();
     });
 
     it('does not guess when the row names no operation', async () => {
