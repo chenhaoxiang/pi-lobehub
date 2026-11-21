@@ -652,7 +652,7 @@ describe('driveTaskFromVerify', () => {
   it('finalizer skips a repair child when its root attempt is stale-fenced', async () => {
     opFindById.mockImplementation(async (id: string) =>
       id === 'repair-op'
-        ? { id: 'repair-op', parentOperationId: 'root-op', taskId: null, topicId: 'topic-repair' }
+        ? { id: 'repair-op', parentOperationId: 'root-op', taskId: 'task-1', topicId: 'topic-done' }
         : { id: 'root-op', parentOperationId: null, taskId: 'task-1', topicId: 'topic-done' },
     );
     hasStaleSettlementFence.mockResolvedValue(true);

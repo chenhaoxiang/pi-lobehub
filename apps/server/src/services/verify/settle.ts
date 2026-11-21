@@ -50,6 +50,23 @@ const resolveTaskOperation = async (operationModel: AgentOperationModel, operati
   return current?.taskId ? current : null;
 };
 
+/** Resolve the root operation identity while retaining a Task id carried by a child. */
+const resolveTaskAttempt = async (operationModel: AgentOperationModel, operationId: string) => {
+  let current = await operationModel.findById(operationId);
+  let taskId = current?.taskId;
+  let root = current;
+  let depth = 0;
+
+  while (current?.parentOperationId && depth < 10) {
+    current = await operationModel.findById(current.parentOperationId);
+    if (!taskId) taskId = current?.taskId;
+    if (current) root = current;
+    depth += 1;
+  }
+
+  return taskId && root ? { ...root, taskId } : null;
+};
+
 /** Collapse every transient `repairing` marker left along a bounded repair chain. */
 export const recomputeRepairAncestors = async (
   operationModel: AgentOperationModel,
@@ -457,7 +474,7 @@ const ownsTaskFinalizerAttempt = async (
   workspaceId?: string,
 ): Promise<boolean> => {
   const operationModel = new AgentOperationModel(db, userId, workspaceId);
-  const taskOperation = await resolveTaskOperation(operationModel, operationId);
+  const taskOperation = await resolveTaskAttempt(operationModel, operationId);
   if (!taskOperation?.taskId) return true;
 
   const topicId = taskOperation.topicId;
