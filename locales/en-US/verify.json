@@ -501,6 +501,8 @@
   "acceptance.tray.goalModal.save": "Save goal",
   "acceptance.tray.goalModal.setTitle": "Set the goal",
   "acceptance.verdict.inProgress": "Acceptance in progress",
+  "acceptance.verdict.lastVerified": "Last verified {{time}}",
+  "acceptance.verdict.neutral": "Acceptance status unavailable",
   "acceptance.video.annotateHint": "Press on the video to pause on that frame and circle a region; press M to mark the whole frame, or drag the lane below the timeline to comment on a span.",
   "acceptance.video.captionsHide": "Hide agent notes",
   "acceptance.video.captionsShow": "Show agent notes",

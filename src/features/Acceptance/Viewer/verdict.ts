@@ -1,4 +1,5 @@
 import { cssVar } from '@lobehub/ui';
+import dayjs from 'dayjs';
 import type { TFunction } from 'i18next';
 import {
   BadgeCheck,
@@ -11,6 +12,31 @@ import {
 } from 'lucide-react';
 
 export const LIVE_ACCEPTANCE_STATUSES = new Set(['pending', 'planned', 'verifying', 'repairing']);
+
+export type AcceptanceVerdictState =
+  'accepted' | 'closed' | 'errored' | 'neutral' | 'rejected' | 'waiting';
+
+/**
+ * Resolve the reader-facing state without treating unknown values as a
+ * decision. In particular, only the exact `accepted` status is success.
+ */
+export const resolveAcceptanceVerdictState = (
+  status: string | null | undefined,
+): AcceptanceVerdictState => {
+  if (status === 'accepted') return 'accepted';
+  if (status === 'closed') return 'closed';
+  if (status === 'rejected') return 'rejected';
+  if (status === 'errored') return 'errored';
+  if (status && LIVE_ACCEPTANCE_STATUSES.has(status)) return 'waiting';
+  return 'neutral';
+};
+
+export type AcceptanceVerdictCounts = {
+  failed: number;
+  notExecuted: number;
+  passed: number;
+  uncertain: number;
+};
 
 export type AcceptanceVerdictMeta = {
   bg: string;
@@ -75,16 +101,16 @@ export const resolveAcceptanceVerdictMeta = (
     };
   }
   return {
-    bg: cssVar.colorInfoBg,
-    color: cssVar.colorInfo,
+    bg: cssVar.colorFillSecondary,
+    color: cssVar.colorTextSecondary,
     icon: CircleDashed,
-    label: t('acceptance.verdict.inProgress'),
+    label: t('acceptance.verdict.neutral'),
   };
 };
 
 export const formatAcceptanceCountsText = (
   t: TFunction<'verify'>,
-  counts: { failed: number; notExecuted: number; passed: number; uncertain: number },
+  counts: AcceptanceVerdictCounts,
 ) =>
   [
     t('acceptance.stats.passed', { count: counts.passed }),
@@ -96,3 +122,14 @@ export const formatAcceptanceCountsText = (
   ]
     .filter(Boolean)
     .join(' · ');
+
+export const formatAcceptanceTimeText = (
+  t: TFunction<'verify'>,
+  time: Date | string | null | undefined,
+) => {
+  if (!time) return undefined;
+  const date = dayjs(time);
+  return date.isValid()
+    ? t('acceptance.verdict.lastVerified', { time: date.format('YYYY-MM-DD HH:mm') })
+    : undefined;
+};

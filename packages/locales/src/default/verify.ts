@@ -635,6 +635,8 @@ export default {
   'acceptance.surface.other': 'Other',
   'acceptance.titleFallback': 'Acceptance',
   'acceptance.verdict.inProgress': 'Acceptance in progress',
+  'acceptance.verdict.lastVerified': 'Last verified {{time}}',
+  'acceptance.verdict.neutral': 'Acceptance status unavailable',
   'acceptance.viewFullReport': 'View full report',
   'acceptance.workspace.actions.delete': 'Delete',
   'acceptance.workspace.actions.markAccepted': 'Mark as accepted',

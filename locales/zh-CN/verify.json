@@ -501,6 +501,8 @@
   "acceptance.tray.goalModal.save": "保存目标",
   "acceptance.tray.goalModal.setTitle": "设定目标",
   "acceptance.verdict.inProgress": "验收进行中",
+  "acceptance.verdict.lastVerified": "最近验证于 {{time}}",
+  "acceptance.verdict.neutral": "验收状态暂不可用",
   "acceptance.video.annotateHint": "在画面上按下即暂停在当前帧并框选；按 M 标注整帧；在时间轴下方的细轨道上拖动可评论一段区间。",
   "acceptance.video.captionsHide": "隐藏 Agent 说明",
   "acceptance.video.captionsShow": "显示 Agent 说明",
