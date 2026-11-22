@@ -10,12 +10,15 @@ import { remoteAvatarSrc } from '@/components/Avatar/fallback';
  * readable in either theme.
  */
 const SEED_COLORS: Record<AgentAvatarColor, string> = {
+  cyan: cssVar.cyan,
   geekblue: cssVar.geekblue,
   gray: cssVar.gray,
+  green: cssVar.green,
   ink: cssVar.gray,
   magenta: cssVar.magenta,
   orange: cssVar.orange,
   purple: cssVar.purple,
+  red: cssVar.red,
   volcano: cssVar.volcano,
 };
 
