@@ -38,6 +38,8 @@ const useFetchAcceptanceBundle = (
   _options?: { enabled?: boolean; refreshInterval?: number },
 ) => sync;
 
+const useFetchAcceptanceComments = (_acceptanceId?: string | null) => sync;
+
 const refreshAcceptanceBundle = async (_acceptanceId: string) => {
   state = { ...state, acceptanceBundleMap: readBundleMap() };
   for (const listener of listeners) listener();
@@ -47,6 +49,7 @@ const emptyState = {
   acceptanceBundleMap: readBundleMap(),
   refreshAcceptanceBundle,
   useFetchAcceptanceBundle,
+  useFetchAcceptanceComments,
 };
 
 let state = emptyState;
@@ -59,6 +62,11 @@ export const useVerifyStore = <T>(selector: (current: typeof emptyState) => T): 
   useSyncExternalStore(subscribe, () => selector(state));
 
 useVerifyStore.getState = () => state;
+
+export const verifySelectors = {
+  acceptanceComments: (_acceptanceId?: string | null) => () => getLocalReport().comments(),
+  isAcceptanceCommentsConfirmed: (_acceptanceId?: string | null) => () => true,
+};
 
 try {
   getLocalReport().subscribe(() => void refreshAcceptanceBundle(getLocalReport().acceptanceId));
