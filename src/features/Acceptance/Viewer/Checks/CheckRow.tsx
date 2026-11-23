@@ -1,6 +1,6 @@
 'use client';
 
-import { isCheckWaivedByDispute, readEvidenceChapters } from '@lobechat/const/verify';
+import { readEvidenceChapters } from '@lobechat/const/verify';
 import {
   ActionIcon,
   Button,
@@ -60,7 +60,7 @@ import {
   IgnoredNote,
   IterationTimeline,
 } from './CheckHistory';
-import { shouldCollapseAfterReview, userReviewState } from './checkState';
+import { checkRowPresentation, shouldCollapseAfterReview, userReviewState } from './checkState';
 import { STATE_META } from './checkStatus';
 import { readCheckDispute } from './dispute';
 import DisputeNote from './DisputeNote';
@@ -130,11 +130,12 @@ export const AcceptanceCheckRow = memo<{
     });
     const title = checkDisplayTitle(check.title, t('acceptance.checks.holisticTitle'));
     const counts = evidenceCounts(check.evidence);
+    const rowPresentation = checkRowPresentation(check);
     const visualization = readVisualizationManifest(check.result?.metadata);
     const dispute = readCheckDispute(check.result?.metadata);
     // An upheld `invalid_criterion` dispute takes the check out of the rollup,
     // so its failed mark must not keep reading as a blocker.
-    const waived = isCheckWaivedByDispute(check.result?.metadata);
+    const waived = rowPresentation.reviewState === 'waived';
 
     const reviewState = userReviewState(check);
     // The decision is stamped on the check's result row — a never-executed
@@ -376,7 +377,7 @@ export const AcceptanceCheckRow = memo<{
               flex={1}
               gap={8}
               style={{ minWidth: 0 }}
-              wrap={open ? 'wrap' : 'nowrap'}
+              wrap={open || !desktop ? 'wrap' : 'nowrap'}
             >
               <Text
                 className={open || !desktop ? undefined : styles.titleEllipsis}
@@ -384,16 +385,29 @@ export const AcceptanceCheckRow = memo<{
               >
                 {title}
               </Text>
+              {rowPresentation.reviewState === 'waived' ? (
+                <Tooltip title={t('acceptance.checks.waivedHint')}>
+                  <Tag size={'small'}>{t('acceptance.checks.waived')}</Tag>
+                </Tooltip>
+              ) : (
+                <Tag size={'small'}>
+                  {t(`acceptance.focus.state.${rowPresentation.reviewState}`)}
+                </Tag>
+              )}
               {!check.required && (
                 <Tooltip title={t('acceptance.checks.notRequiredHint')}>
                   <Tag size={'small'}>{t('acceptance.checks.notRequired')}</Tag>
                 </Tooltip>
               )}
-              {waived && (
-                <Tooltip title={t('acceptance.checks.waivedHint')}>
-                  <Tag size={'small'}>{t('acceptance.checks.waived')}</Tag>
-                </Tooltip>
-              )}
+              <Text
+                fontSize={11}
+                type={'secondary'}
+                aria-label={t('acceptance.focus.evidenceCount', {
+                  count: rowPresentation.evidenceCount,
+                })}
+              >
+                {t('acceptance.focus.evidenceCount', { count: rowPresentation.evidenceCount })}
+              </Text>
               {/* The verdict pair travels WITH the title, not adrift at the row's
               far right: the claim you judge and the judgement you give land in
               one glance, so a long checklist needs no eye round-trip across the

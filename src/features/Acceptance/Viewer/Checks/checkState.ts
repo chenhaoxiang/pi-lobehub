@@ -1,3 +1,5 @@
+import { isCheckWaivedByDispute } from '@lobechat/const/verify';
+
 import type { AcceptanceCheck, AcceptanceCheckState } from './types';
 
 export const CHECK_GROUPING_THRESHOLD = 10;
@@ -47,6 +49,28 @@ export const checkFilterState = (check: AcceptanceCheck): Exclude<CheckFilter, '
   if (review === 'ignored') return 'ignored';
   if (review === 'rejected') return 'needsFix';
   return 'pending';
+};
+
+export type CheckRowReviewState = Exclude<CheckFilter, 'all'> | 'waived';
+
+export interface CheckRowPresentation {
+  evidenceCount: number;
+  reviewState: CheckRowReviewState;
+}
+
+/**
+ * The persistent row summary: user review state (or waiver) plus the evidence
+ * count. It deliberately does not include the verifier state, which is already
+ * represented by the row icon and must not be presented as a user decision.
+ */
+export const checkRowPresentation = (check: AcceptanceCheck): CheckRowPresentation => {
+  const waived = isCheckWaivedByDispute(check.result?.metadata);
+  const evidenceCount = check.evidence.length;
+
+  return {
+    evidenceCount,
+    reviewState: waived ? 'waived' : checkFilterState(check),
+  };
 };
 
 /** Keep the verifier's result separate from the user's acceptance workflow state. */
