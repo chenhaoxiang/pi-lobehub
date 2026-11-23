@@ -162,6 +162,24 @@ export class TaskTopicModel {
     operationId: string,
     status: string,
   ): Promise<boolean> {
+    // The run row and its topic are separate aggregates. Keep the CAS fence and
+    // the terminal topic stamp in one transaction so a failed stamp rolls back
+    // the run update and leaves it visible to the recovery sweep.
+    return this.db.transaction((tx) =>
+      new TaskTopicModel(
+        tx as LobeChatDatabase,
+        this.userId,
+        this.workspaceId,
+      ).settleRunIfCurrentInTransaction(taskId, topicId, operationId, status),
+    );
+  }
+
+  private async settleRunIfCurrentInTransaction(
+    taskId: string,
+    topicId: string,
+    operationId: string,
+    status: string,
+  ): Promise<boolean> {
     const rows = await this.db
       .update(taskTopics)
       .set({ status })

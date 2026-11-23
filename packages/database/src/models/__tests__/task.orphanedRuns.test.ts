@@ -235,6 +235,62 @@ describe('TaskModel.findInterruptedRunningTopics', () => {
   });
 });
 
+describe('TaskTopicModel.settleRunIfCurrent', () => {
+  it('rolls back the run status when stamping the topic fails, then allows a retry', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const model = new TaskTopicModel(serverDB, userId);
+    await serverDB.execute(sql`
+      CREATE OR REPLACE FUNCTION settle_run_test_fail_topic_stamp() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'topic stamp failed'; END;
+      $$ LANGUAGE plpgsql
+    `);
+    await serverDB.execute(sql`
+      CREATE TRIGGER settle_run_test_fail_topic_stamp BEFORE UPDATE ON topics
+      FOR EACH ROW EXECUTE FUNCTION settle_run_test_fail_topic_stamp()
+    `);
+
+    try {
+      await expect(
+        model.settleRunIfCurrent(taskId, topicId, operationId, 'failed'),
+      ).rejects.toThrow();
+    } finally {
+      await serverDB.execute(
+        sql`DROP TRIGGER IF EXISTS settle_run_test_fail_topic_stamp ON topics`,
+      );
+      await serverDB.execute(sql`DROP FUNCTION IF EXISTS settle_run_test_fail_topic_stamp()`);
+    }
+
+    expect((await readRun(topicId)).status).toBe('running');
+    expect((await readTopic(topicId)).completedAt).toBeNull();
+
+    expect(await model.settleRunIfCurrent(taskId, topicId, operationId, 'failed')).toBe(true);
+    expect((await readRun(topicId)).status).toBe('failed');
+    expect((await readTopic(topicId)).completedAt).toBeInstanceOf(Date);
+  });
+
+  it('keeps the operation CAS fence when a continuation takes over after recovery', async () => {
+    const { operationId, taskId, topicId } = await seed();
+    const model = new TaskTopicModel(serverDB, userId);
+
+    await model.updateOperationId(taskId, topicId, 'op-continuation');
+
+    expect(await model.settleRunIfCurrent(taskId, topicId, operationId, 'failed')).toBe(false);
+    expect(await readRun(topicId)).toMatchObject({
+      operationId: 'op-continuation',
+      status: 'running',
+    });
+
+    expect(await model.settleRunIfCurrent(taskId, topicId, 'op-continuation', 'completed')).toBe(
+      true,
+    );
+    expect(await readRun(topicId)).toMatchObject({
+      operationId: 'op-continuation',
+      status: 'completed',
+    });
+    expect((await readTopic(topicId)).completedAt).toBeInstanceOf(Date);
+  });
+});
+
 describe('TaskRunClaimRepo', () => {
   it('claims only the current generation and transfers to its continuation', async () => {
     const { operationId, taskId, topicId } = await seed();
